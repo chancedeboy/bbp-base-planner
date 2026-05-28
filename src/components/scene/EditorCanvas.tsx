@@ -72,14 +72,17 @@ export default function EditorCanvas() {
   const ghostPoseRef = useRef<{ position: Vec3; rotation: Vec3 } | null>(null)
 
   const selectedPartId = useBuildStore((s) => s.selectedPartId)
+  const selectedPieceId = useBuildStore((s) => s.selectedPieceId)
   const selectPart = useBuildStore((s) => s.selectPart)
   const selectPiece = useBuildStore((s) => s.selectPiece)
   const rotateGhost = useBuildStore((s) => s.rotateGhost)
+  const rotatePiece = useBuildStore((s) => s.rotatePiece)
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const cycleSnapCandidate = useBuildStore((s) => s.cycleSnapCandidate)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
 
-  // Keyboard: ESC clears selection (part or placed piece); R / Shift+R rotate the ghost.
+  // Keyboard: ESC clears selection. R / Shift+R rotate whichever is active —
+  // the ghost during placement, or the selected placed piece otherwise.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -87,19 +90,32 @@ export default function EditorCanvas() {
         selectPiece(null)
         return
       }
-      if (!selectedPartId) return
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
 
       if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault()
         const degrees = e.shiftKey ? rotationStep : 90
-        rotateGhost((degrees * Math.PI) / 180)
+        const deltaRad = (degrees * Math.PI) / 180
+        if (selectedPartId) {
+          e.preventDefault()
+          rotateGhost(deltaRad)
+        } else if (selectedPieceId) {
+          e.preventDefault()
+          rotatePiece(selectedPieceId, deltaRad)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedPartId, rotationStep, rotateGhost, selectPart, selectPiece])
+  }, [
+    selectedPartId,
+    selectedPieceId,
+    rotationStep,
+    rotateGhost,
+    rotatePiece,
+    selectPart,
+    selectPiece,
+  ])
 
   // Mouse wheel cycles snap candidates while a part is selected & snap is on.
   // When no part is selected, wheel passes through to OrbitControls (zoom).
