@@ -12,11 +12,16 @@ export interface WorldAnchor {
   anchor: SnapAnchor
   worldPosition: Vec3
   worldNormal: Vec3
+  worldSlideAxis: Vec3 | null
 }
 
+// A snap candidate is a specific (anchor, slide) target the ghost can land on.
+// One WorldAnchor with a slideAxis produces 3 SnapCandidates (offsets -1/0/+1).
 export interface SnapCandidate {
   worldAnchor: WorldAnchor
-  distance: number
+  worldPosition: Vec3       // may differ from worldAnchor.worldPosition when slid
+  distance: number          // from cursor to worldPosition (XZ)
+  slideOffset: -1 | 0 | 1
 }
 
 // Rotate a local-space vector around the Y axis by `yawRad` radians.
@@ -62,13 +67,12 @@ export function computeWorldAnchorsForPiece(
 ): WorldAnchor[] {
   const yaw = piece.rotation[1]
   return part.snapAnchors.map((anchor) => {
-    const rotated = rotateY(anchor.position, yaw)
-    const rotatedNormal = rotateY(anchor.normal, yaw)
     return {
       pieceUuid: piece.uuid,
       anchor,
-      worldPosition: addVec(piece.position, rotated),
-      worldNormal: rotatedNormal,
+      worldPosition: addVec(piece.position, rotateY(anchor.position, yaw)),
+      worldNormal: rotateY(anchor.normal, yaw),
+      worldSlideAxis: anchor.slideAxis ? rotateY(anchor.slideAxis, yaw) : null,
     }
   })
 }
@@ -89,40 +93,60 @@ export function computeAllWorldAnchors(
 }
 
 // Find anchors compatible with a ghost of `category`, within `radius` of cursor,
-// sorted nearest-first.
+// sorted nearest-first. When `ghostPart` is provided, anchors with a slideAxis
+// expand into 3 candidates (offsets −1, 0, +1 of ghost.d/2 along the slide axis).
 export function findSnapCandidates(
   category: Category,
   cursor: Vec3,
   worldAnchors: WorldAnchor[],
-  radius: number
+  radius: number,
+  ghostPart?: PartDef
 ): SnapCandidate[] {
   const out: SnapCandidate[] = []
   for (const wa of worldAnchors) {
     if (!wa.anchor.accepts.includes(category)) continue
-    const d = distXZ(cursor, wa.worldPosition)
-    if (d > radius) continue
-    out.push({ worldAnchor: wa, distance: d })
+
+    const expansions: Array<{ pos: Vec3; offset: -1 | 0 | 1 }> = (() => {
+      if (!ghostPart || !wa.worldSlideAxis) {
+        return [{ pos: wa.worldPosition, offset: 0 as const }]
+      }
+      const shift = ghostPart.dimensions.d / 2
+      return [
+        { pos: wa.worldPosition, offset: 0 as const },
+        { pos: addVec(wa.worldPosition, scaleVec(wa.worldSlideAxis, shift)), offset: 1 as const },
+        { pos: subVec(wa.worldPosition, scaleVec(wa.worldSlideAxis, shift)), offset: -1 as const },
+      ]
+    })()
+
+    for (const { pos, offset } of expansions) {
+      const d = distXZ(cursor, pos)
+      if (d > radius) continue
+      out.push({
+        worldAnchor: wa,
+        worldPosition: pos,
+        distance: d,
+        slideOffset: offset,
+      })
+    }
   }
   out.sort((a, b) => a.distance - b.distance)
   return out
 }
 
-// Given a candidate anchor and the ghost part, compute where the ghost's
-// CENTER should go. Placement rules per anchor.surface:
-//   top    — ghost sits on top; center.x,z = anchor.x,z; center.y = anchor.y + ghost.h/2
-//   bottom — ghost hangs below; center.y = anchor.y - ghost.h/2
-//   side   — ghost butts up against the face; center pushed along normal by ghost depth/2
-//            at matched Y height
-//   edge   — ghost stands on the top edge of a flat piece; centered on edge line,
-//            lifted by ghost.h/2 above the edge surface
+// Given a candidate and the ghost part, compute where the ghost's CENTER
+// should go. Placement rules per anchor.surface:
+//   top    — ghost sits on top; center.x,z = candidate.x,z; center.y = candidate.y + ghost.h/2
+//   bottom — ghost hangs below
+//   side   — ghost butts up against the face; center pushed along normal by ghost.d/2
+//   edge   — ghost stands on the top edge; centered on edge line, lifted by ghost.h/2
 export function computeSnapPosition(
   ghostPart: PartDef,
-  candidate: WorldAnchor
+  candidate: SnapCandidate
 ): Vec3 {
   const { h, d } = ghostPart.dimensions
   const a = candidate.worldPosition
-  const n = candidate.worldNormal
-  const surface = candidate.anchor.surface
+  const n = candidate.worldAnchor.worldNormal
+  const surface = candidate.worldAnchor.anchor.surface
 
   switch (surface) {
     case 'top':
@@ -132,15 +156,10 @@ export function computeSnapPosition(
     case 'edge':
       return [a[0], a[1] + h / 2, a[2]]
     case 'side': {
-      // Push out along normal by half the ghost's extent in that direction.
-      // Use the ghost's depth (d) as a reasonable proxy — works for walls and
-      // wall-like pieces. Pieces with non-trivial extents along multiple axes
-      // are an exception we'll refine in later sprints.
       const offset = scaleVec(n, d / 2)
       return [a[0] + offset[0], a[1], a[2] + offset[2]]
     }
   }
-  // Unreachable — surface is exhaustively switched above
   return a
 }
 
@@ -167,9 +186,6 @@ export function isPointInsideFootprint(
 // Computes the elevation (top-surface Y) of whatever the ghost is over.
 // Probes the ghost's footprint corners + center against every placed piece;
 // the highest matching piece's top wins. Returns 0 if nothing is underneath.
-//
-// This is what makes "drag a roof over the box" work — the ghost auto-lifts
-// to wall-top height because the floor's 4 corners land on the 4 walls.
 export function computeElevation(
   cursor: Vec3,
   ghostPart: PartDef,
@@ -189,7 +205,7 @@ export function computeElevation(
     const part = partsById[piece.partId]
     if (!part) continue
     const top = piece.position[1] + part.dimensions.h / 2
-    if (top <= maxTop) continue // can't raise us
+    if (top <= maxTop) continue
     for (const p of probes) {
       if (isPointInsideFootprint(p, piece, part)) {
         maxTop = top
@@ -203,11 +219,11 @@ export function computeElevation(
 // Compute a snapped yaw that aligns the ghost's primary face with the candidate's
 // normal. For 'edge' and 'side' anchors, walls should face perpendicular to the
 // anchor normal (i.e., the wall's broad face matches the normal direction).
-export function computeSnapRotation(candidate: WorldAnchor): Vec3 {
-  const surface = candidate.anchor.surface
+export function computeSnapRotation(candidate: SnapCandidate): Vec3 {
+  const surface = candidate.worldAnchor.anchor.surface
+  const normal = candidate.worldAnchor.worldNormal
   if (surface === 'edge' || surface === 'side') {
-    // Yaw so the ghost's +Z face aligns with the anchor's normal
-    const yaw = Math.atan2(candidate.worldNormal[0], candidate.worldNormal[2])
+    const yaw = Math.atan2(normal[0], normal[2])
     return [0, yaw, 0]
   }
   return [0, 0, 0]

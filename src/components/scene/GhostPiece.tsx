@@ -52,13 +52,14 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
         part.category,
         cursorVec,
         worldAnchors,
-        SNAP_RADIUS
+        SNAP_RADIUS,
+        part
       )
       if (candidates.length > 0) {
         const idx =
           ((snapCandidateIndex % candidates.length) + candidates.length) %
           candidates.length
-        const candidate = candidates[idx].worldAnchor
+        const candidate = candidates[idx]
         position = computeSnapPosition(part, candidate)
         // Snap rotation only when user hasn't manually rotated (ghostRotation = identity)
         if (ghostRotation[1] === 0) {

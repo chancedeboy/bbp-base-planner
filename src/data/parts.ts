@@ -17,7 +17,16 @@ function wallAnchors(w: number, h: number): SnapAnchor[] {
   return [
     { id: 'left', position: [-w / 2, 0, 0], normal: [-1, 0, 0], surface: 'side', accepts: ACCEPTS_WALL_LIKE },
     { id: 'right', position: [w / 2, 0, 0], normal: [1, 0, 0], surface: 'side', accepts: ACCEPTS_WALL_LIKE },
-    { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_ON_WALL_TOP },
+    {
+      id: 'top',
+      position: [0, h / 2, 0],
+      normal: [0, 1, 0],
+      surface: 'top',
+      accepts: ACCEPTS_ON_WALL_TOP,
+      // Slide along wall thickness — lets a roof scroll between centered-on-wall
+      // and shifted to either side (so it spans the box interior).
+      slideAxis: [0, 0, 1],
+    },
     { id: 'bottom', position: [0, -h / 2, 0], normal: [0, -1, 0], surface: 'bottom', accepts: ['wall'] },
   ]
 }

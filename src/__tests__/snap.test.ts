@@ -134,56 +134,154 @@ describe('findSnapCandidates', () => {
   })
 })
 
+// Helper: synthesize a SnapCandidate from raw fields for tests
+function mkCandidate(args: {
+  surface: 'top' | 'bottom' | 'side' | 'edge'
+  worldPosition: Vec3
+  worldNormal: Vec3
+  slideOffset?: -1 | 0 | 1
+  worldSlideAxis?: Vec3 | null
+}) {
+  return {
+    worldAnchor: {
+      pieceUuid: 't1',
+      anchor: {
+        id: 'test',
+        position: [0, 0, 0] as Vec3,
+        normal: args.worldNormal,
+        surface: args.surface,
+        accepts: ['wall' as const],
+      },
+      worldPosition: args.worldPosition,
+      worldNormal: args.worldNormal,
+      worldSlideAxis: args.worldSlideAxis ?? null,
+    },
+    worldPosition: args.worldPosition,
+    distance: 0,
+    slideOffset: args.slideOffset ?? (0 as const),
+  }
+}
+
 describe('computeSnapPosition', () => {
   it('top surface: lifts ghost by half its height above the anchor', () => {
     const wall = getPart('large-wall')! // h = 3
-    const candidate = {
-      pieceUuid: 'f1',
-      anchor: {
-        id: 'top',
-        position: [0, 0, 0] as Vec3,
-        normal: [0, 1, 0] as Vec3,
-        surface: 'top' as const,
-        accepts: ['wall'] as Array<'wall'>,
-      },
-      worldPosition: [3, 0.2, 5] as Vec3,
-      worldNormal: [0, 1, 0] as Vec3,
-    }
-    expect(computeSnapPosition(wall, candidate)).toEqual([3, 0.2 + 1.5, 5])
+    const c = mkCandidate({ surface: 'top', worldPosition: [3, 0.2, 5], worldNormal: [0, 1, 0] })
+    expect(computeSnapPosition(wall, c)).toEqual([3, 0.2 + 1.5, 5])
   })
 
   it('edge surface: centers ghost on edge line and lifts by half height', () => {
     const wall = getPart('large-wall')! // h = 3
-    const candidate = {
-      pieceUuid: 'f1',
-      anchor: {
-        id: 'edge-px',
-        position: [2, 0.1, 0] as Vec3,
-        normal: [1, 0, 0] as Vec3,
-        surface: 'edge' as const,
-        accepts: ['wall'] as Array<'wall'>,
-      },
-      worldPosition: [2, 0.1, 0] as Vec3,
-      worldNormal: [1, 0, 0] as Vec3,
-    }
-    expect(computeSnapPosition(wall, candidate)).toEqual([2, 0.1 + 1.5, 0])
+    const c = mkCandidate({ surface: 'edge', worldPosition: [2, 0.1, 0], worldNormal: [1, 0, 0] })
+    expect(computeSnapPosition(wall, c)).toEqual([2, 0.1 + 1.5, 0])
   })
 
   it('side surface: pushes ghost out along the anchor normal by half its depth', () => {
     const wall = getPart('large-wall')! // d = 0.2
-    const candidate = {
-      pieceUuid: 'w1',
-      anchor: {
-        id: 'right',
-        position: [2, 0, 0] as Vec3,
-        normal: [1, 0, 0] as Vec3,
-        surface: 'side' as const,
-        accepts: ['wall'] as Array<'wall'>,
-      },
-      worldPosition: [2, 1.5, 0] as Vec3,
-      worldNormal: [1, 0, 0] as Vec3,
+    const c = mkCandidate({ surface: 'side', worldPosition: [2, 1.5, 0], worldNormal: [1, 0, 0] })
+    expect(computeSnapPosition(wall, c)).toEqual([2 + 0.1, 1.5, 0])
+  })
+})
+
+describe('slide axis expansion', () => {
+  it('a wall top anchor produces 3 candidates when ghostPart is provided', () => {
+    const wallH = 3
+    const wallCenterY = 0.3 + wallH / 2 // sitting on foundation top of 0.3
+    const wall: PlacedPiece = {
+      uuid: 'w-east',
+      partId: 'large-wall',
+      // East wall on foundation, rotated 90° around Y so its length is along Z
+      position: [2, wallCenterY, 0],
+      rotation: [0, Math.PI / 2, 0],
+      tier: 'frame',
+      layer: 'exterior',
     }
-    expect(computeSnapPosition(wall, candidate)).toEqual([2 + 0.1, 1.5, 0])
+    const anchors = computeAllWorldAnchors([wall], PARTS_BY_ID)
+    const floor = getPart('large-floor')! // 4×0.2×4, depth d=4
+    // Filter to floor-accepting candidates within radius; expect 3 around the wall top
+    const candidates = findSnapCandidates('floor', [2, wallCenterY + wallH / 2, 0], anchors, 5, floor)
+    const topCandidates = candidates.filter((c) => c.worldAnchor.anchor.surface === 'top')
+    expect(topCandidates.length).toBe(3)
+    const offsets = new Set(topCandidates.map((c) => c.slideOffset))
+    expect(offsets).toEqual(new Set([-1, 0, 1]))
+  })
+
+  it('without ghostPart, slide axis is not expanded (single candidate per anchor)', () => {
+    const wall: PlacedPiece = {
+      uuid: 'w-east',
+      partId: 'large-wall',
+      position: [2, 1.8, 0],
+      rotation: [0, Math.PI / 2, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const anchors = computeAllWorldAnchors([wall], PARTS_BY_ID)
+    const candidates = findSnapCandidates('floor', [2, 3.3, 0], anchors, 5)
+    const top = candidates.filter((c) => c.worldAnchor.anchor.surface === 'top')
+    expect(top.length).toBe(1)
+    expect(top[0].slideOffset).toBe(0)
+  })
+
+  it('slide candidate worldPosition is offset along the rotated slide axis', () => {
+    // East wall (rotated 90° around Y). Local slideAxis [0,0,1] → world [1,0,0]
+    // after rotation (rotateY([0,0,1], π/2) = [1, 0, 0]).
+    const wall: PlacedPiece = {
+      uuid: 'w-east',
+      partId: 'large-wall',
+      position: [2, 1.8, 0],
+      rotation: [0, Math.PI / 2, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const anchors = computeAllWorldAnchors([wall], PARTS_BY_ID)
+    const floor = getPart('large-floor')! // d = 4 → shift = 2
+    const candidates = findSnapCandidates('floor', [2, 3.3, 0], anchors, 5, floor)
+    const top = candidates.filter((c) => c.worldAnchor.anchor.surface === 'top')
+    const minus = top.find((c) => c.slideOffset === -1)!
+    const zero = top.find((c) => c.slideOffset === 0)!
+    const plus = top.find((c) => c.slideOffset === 1)!
+    // The wall top anchor is at world position approximately (2, wall_top, 0)
+    expect(zero.worldPosition[0]).toBeCloseTo(2)
+    // Slid by ghost.d/2 = 2 along +X (one direction places roof over box, the other away)
+    expect(plus.worldPosition[0]).toBeCloseTo(4)
+    expect(minus.worldPosition[0]).toBeCloseTo(0)
+    // The -1 candidate landing at x=0 means roof centered over a box with east wall at x=2 ✓
+  })
+
+  it('snapped position centers a roof over a 4-wall box (the user-reported scenario)', () => {
+    // Build: foundation centered at origin, 4 walls on its edges, hover a roof
+    // near the east wall and pick the slide=-1 candidate → roof centered at origin.
+    const wallH = 3
+    const foundationY = 0.15
+    const wallCenterY = foundationY + 0.15 + wallH / 2 // 1.8
+    const mkWall = (x: number, z: number, yaw: number): PlacedPiece => ({
+      uuid: `w-${x}-${z}`,
+      partId: 'large-wall',
+      position: [x, wallCenterY, z],
+      rotation: [0, yaw, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    })
+    const walls = [
+      mkWall(2, 0, Math.PI / 2),
+      mkWall(-2, 0, Math.PI / 2),
+      mkWall(0, 2, 0),
+      mkWall(0, -2, 0),
+    ]
+    const anchors = computeAllWorldAnchors(walls, PARTS_BY_ID)
+    const floor = getPart('large-floor')! // d=4
+    // Cursor near east wall top
+    const candidates = findSnapCandidates('floor', [2, wallCenterY + wallH / 2, 0], anchors, 5, floor)
+    // Find the candidate for the east wall with the slide that puts the roof at x≈0
+    const east = candidates.filter(
+      (c) => c.worldAnchor.pieceUuid === 'w-2-0' && c.worldAnchor.anchor.surface === 'top'
+    )
+    const centered = east.find((c) => Math.abs(c.worldPosition[0]) < 0.01)
+    expect(centered).toBeDefined()
+    const placement = computeSnapPosition(floor, centered!)
+    expect(placement[0]).toBeCloseTo(0)
+    expect(placement[2]).toBeCloseTo(0)
+    // Y = wall top + roof half-height
+    expect(placement[1]).toBeCloseTo(wallCenterY + wallH / 2 + 0.1)
   })
 })
 
@@ -291,36 +389,13 @@ describe('computeElevation', () => {
 
 describe('computeSnapRotation', () => {
   it('aligns ghost yaw to anchor normal for edge surface', () => {
-    const candidate = {
-      pieceUuid: 'f1',
-      anchor: {
-        id: 'edge-pz',
-        position: [0, 0, 2] as Vec3,
-        normal: [0, 0, 1] as Vec3,
-        surface: 'edge' as const,
-        accepts: ['wall'] as Array<'wall'>,
-      },
-      worldPosition: [0, 0, 2] as Vec3,
-      worldNormal: [0, 0, 1] as Vec3,
-    }
-    const rot = computeSnapRotation(candidate)
+    const c = mkCandidate({ surface: 'edge', worldPosition: [0, 0, 2], worldNormal: [0, 0, 1] })
     // normal [0,0,1] → atan2(0, 1) = 0
-    expect(rot[1]).toBeCloseTo(0)
+    expect(computeSnapRotation(c)[1]).toBeCloseTo(0)
   })
 
   it('returns identity for top surface', () => {
-    const candidate = {
-      pieceUuid: 'f1',
-      anchor: {
-        id: 'top',
-        position: [0, 0, 0] as Vec3,
-        normal: [0, 1, 0] as Vec3,
-        surface: 'top' as const,
-        accepts: ['wall'] as Array<'wall'>,
-      },
-      worldPosition: [0, 0, 0] as Vec3,
-      worldNormal: [0, 1, 0] as Vec3,
-    }
-    expect(computeSnapRotation(candidate)).toEqual([0, 0, 0])
+    const c = mkCandidate({ surface: 'top', worldPosition: [0, 0, 0], worldNormal: [0, 1, 0] })
+    expect(computeSnapRotation(c)).toEqual([0, 0, 0])
   })
 })

@@ -46,6 +46,11 @@ export interface SnapAnchor {
   normal: [number, number, number]    // local-space facing direction
   surface: AnchorSurface
   accepts: Category[]
+  // Optional local-space axis along which the ghost can slide. When present,
+  // the snap system expands this anchor into 3 candidates (−1, 0, +1 offsets
+  // of ghost.d/2). Wall tops use this so a roof can snap centered-on-wall OR
+  // shifted to either side (matching BBP's in-game scroll-wheel behavior).
+  slideAxis?: [number, number, number]
 }
 
 export interface PartDef {
