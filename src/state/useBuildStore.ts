@@ -24,6 +24,20 @@ interface GhostState {
   snapCandidateIndex: number
 }
 
+interface UndoState {
+  // Stack of prior pieces[] snapshots. Each piece-mutating action pushes the
+  // OLD pieces array onto this stack before applying its change. undo() pops
+  // the most recent snapshot and restores it. Capped at HISTORY_LIMIT to keep
+  // memory bounded.
+  pastPieces: PlacedPiece[][]
+}
+
+const HISTORY_LIMIT = 50
+
+function pushHistory(s: { pieces: PlacedPiece[]; pastPieces: PlacedPiece[][] }) {
+  return [...s.pastPieces, s.pieces].slice(-HISTORY_LIMIT)
+}
+
 interface BuildStoreActions {
   selectedPartId: string | null
   selectPart: (id: string | null) => void
@@ -41,6 +55,7 @@ interface BuildStoreActions {
   setMode: (mode: 'exterior' | 'interior') => void
   setServerConfig: (cfg: Partial<ServerConfig>) => void
   clear: () => void
+  undo: () => void
 
   // Ghost / placement controls
   setGhostRotation: (rot: [number, number, number]) => void
@@ -50,9 +65,11 @@ interface BuildStoreActions {
   resetSnapCandidate: () => void
 }
 
-export type BuildStore = BuildState & GhostState & BuildStoreActions
+export type BuildStore = BuildState & GhostState & UndoState & BuildStoreActions
 
-const initialState: BuildState & GhostState & { selectedPartId: string | null } = {
+const initialState: BuildState &
+  GhostState &
+  UndoState & { selectedPartId: string | null } = {
   pieces: [],
   meta: initialMeta,
   snapEnabled: true,
@@ -63,6 +80,7 @@ const initialState: BuildState & GhostState & { selectedPartId: string | null } 
   serverConfig: DEFAULT_SERVER_CONFIG,
   ghostRotation: [0, 0, 0],
   snapCandidateIndex: 0,
+  pastPieces: [],
 }
 
 export const useBuildStore = create<BuildStore>()(
@@ -92,6 +110,7 @@ export const useBuildStore = create<BuildStore>()(
         set(
           (s) => ({
             pieces: [...s.pieces, piece],
+            pastPieces: pushHistory(s),
             meta: { ...s.meta, updatedAt: new Date().toISOString() },
             snapCandidateIndex: 0,
           }),
@@ -102,7 +121,10 @@ export const useBuildStore = create<BuildStore>()(
       },
       removePiece: (uuid) =>
         set(
-          (s) => ({ pieces: s.pieces.filter((p) => p.uuid !== uuid) }),
+          (s) => ({
+            pieces: s.pieces.filter((p) => p.uuid !== uuid),
+            pastPieces: pushHistory(s),
+          }),
           false,
           'removePiece'
         ),
@@ -111,6 +133,7 @@ export const useBuildStore = create<BuildStore>()(
         set(
           (s) => ({
             pieces: s.pieces.map((p) => (p.uuid === uuid ? { ...p, tier } : p)),
+            pastPieces: pushHistory(s),
           }),
           false,
           'upgradeTier'
@@ -119,6 +142,7 @@ export const useBuildStore = create<BuildStore>()(
         set(
           (s) => ({
             pieces: s.pieces.map((p) => (p.uuid === uuid ? { ...p, rotation } : p)),
+            pastPieces: pushHistory(s),
           }),
           false,
           'setPieceRotation'
@@ -131,6 +155,7 @@ export const useBuildStore = create<BuildStore>()(
                 ? { ...p, rotation: [p.rotation[0], p.rotation[1] + deltaRad, p.rotation[2]] }
                 : p
             ),
+            pastPieces: pushHistory(s),
           }),
           false,
           'rotatePiece'
@@ -143,7 +168,31 @@ export const useBuildStore = create<BuildStore>()(
           false,
           'setServerConfig'
         ),
-      clear: () => set({ ...initialState }, false, 'clear'),
+      clear: () =>
+        set(
+          (s) => ({ ...initialState, pastPieces: pushHistory(s) }),
+          false,
+          'clear'
+        ),
+      undo: () =>
+        set(
+          (s) => {
+            if (s.pastPieces.length === 0) return s
+            const restored = s.pastPieces[s.pastPieces.length - 1]
+            const past = s.pastPieces.slice(0, -1)
+            const selectedExists =
+              s.selectedPieceId !== null &&
+              restored.some((p) => p.uuid === s.selectedPieceId)
+            return {
+              pieces: restored,
+              pastPieces: past,
+              selectedPieceId: selectedExists ? s.selectedPieceId : null,
+              meta: { ...s.meta, updatedAt: new Date().toISOString() },
+            }
+          },
+          false,
+          'undo'
+        ),
 
       setGhostRotation: (rot) => set({ ghostRotation: rot }, false, 'setGhostRotation'),
       rotateGhost: (deltaRad) =>

@@ -78,6 +78,7 @@ export default function EditorCanvas() {
   const rotateGhost = useBuildStore((s) => s.rotateGhost)
   const rotatePiece = useBuildStore((s) => s.rotatePiece)
   const removePiece = useBuildStore((s) => s.removePiece)
+  const undo = useBuildStore((s) => s.undo)
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const cycleSnapCandidate = useBuildStore((s) => s.cycleSnapCandidate)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
@@ -94,6 +95,13 @@ export default function EditorCanvas() {
       }
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+
+      // Ctrl/Cmd+Z — undo the most recent piece mutation
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
 
       if (e.key === 'r' || e.key === 'R') {
         const degrees = e.shiftKey ? rotationStep : 90
@@ -140,6 +148,7 @@ export default function EditorCanvas() {
     selectPiece,
     snapEnabled,
     cycleSnapCandidate,
+    undo,
   ])
 
   // Mouse wheel cycles snap candidates while a part is selected & snap is on.

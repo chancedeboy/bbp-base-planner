@@ -86,6 +86,10 @@ export default function Settings({ onClose }: Props) {
               <kbd className="text-gray-300">Backspace</kbd> — delete
               selected piece
             </li>
+            <li>
+              <kbd className="text-gray-300">Ctrl+Z</kbd> /{' '}
+              <kbd className="text-gray-300">⌘+Z</kbd> — undo
+            </li>
           </ul>
         </section>
       </div>
