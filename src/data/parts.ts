@@ -10,6 +10,9 @@ const ACCEPTS_WALL_LIKE: Category[] = ['wall', 'door', 'window', 'gate']
 const ACCEPTS_ON_FLOOR: Category[] = ['wall', 'door', 'window', 'gate', 'pillar', 'stair']
 const ACCEPTS_ON_WALL_TOP: Category[] = ['wall', 'floor', 'roof']
 const ACCEPTS_FOUNDATION_TOP: Category[] = ['wall', 'floor', 'foundation', 'pillar']
+// Edge anchors are for pieces that STAND ON the foundation edge (walls, pillars).
+// Foundations placed side-by-side use the separate side anchors below.
+const ACCEPTS_FOUNDATION_EDGE: Category[] = ['wall', 'floor', 'pillar']
 
 // Anchor sets for common piece shapes. Inputs are dimensions; outputs are
 // SnapAnchor arrays in local space (piece center is origin).
@@ -47,10 +50,16 @@ function floorAnchors(w: number, h: number, d: number): SnapAnchor[] {
 function foundationAnchors(w: number, h: number, d: number): SnapAnchor[] {
   return [
     { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_FOUNDATION_TOP },
-    { id: 'edge-px', position: [w / 2, h / 2, 0], normal: [1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
-    { id: 'edge-nx', position: [-w / 2, h / 2, 0], normal: [-1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
-    { id: 'edge-pz', position: [0, h / 2, d / 2], normal: [0, 0, 1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
-    { id: 'edge-nz', position: [0, h / 2, -d / 2], normal: [0, 0, -1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
+    // Top edges — for walls/pillars that stand on the perimeter of the foundation.
+    { id: 'edge-px', position: [w / 2, h / 2, 0], normal: [1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_EDGE },
+    { id: 'edge-nx', position: [-w / 2, h / 2, 0], normal: [-1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_EDGE },
+    { id: 'edge-pz', position: [0, h / 2, d / 2], normal: [0, 0, 1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_EDGE },
+    { id: 'edge-nz', position: [0, h / 2, -d / 2], normal: [0, 0, -1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_EDGE },
+    // Side faces at center height — for placing adjacent foundations flush and level.
+    { id: 'side-px', position: [w / 2, 0, 0], normal: [1, 0, 0], surface: 'side', accepts: ['foundation'] },
+    { id: 'side-nx', position: [-w / 2, 0, 0], normal: [-1, 0, 0], surface: 'side', accepts: ['foundation'] },
+    { id: 'side-pz', position: [0, 0, d / 2], normal: [0, 0, 1], surface: 'side', accepts: ['foundation'] },
+    { id: 'side-nz', position: [0, 0, -d / 2], normal: [0, 0, -1], surface: 'side', accepts: ['foundation'] },
   ]
 }
 

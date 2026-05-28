@@ -399,3 +399,69 @@ describe('computeSnapRotation', () => {
     expect(computeSnapRotation(c)).toEqual([0, 0, 0])
   })
 })
+
+describe('foundation-to-foundation side snap', () => {
+  const foundationId = 'foundation-triangle'
+  const mkFoundation = (position: Vec3): PlacedPiece => ({
+    uuid: 'f1',
+    partId: foundationId,
+    position,
+    rotation: [0, 0, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  })
+
+  it('side-px anchor is at the center height of the foundation, not the top edge', () => {
+    const part = getPart(foundationId)!
+    const piece = mkFoundation([0, 0.15, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const sidePx = anchors.find((wa) => wa.anchor.id === 'side-px')!
+    expect(sidePx).toBeDefined()
+    // Center height = piece.position.y = 0.15; top edge would be 0.3
+    expect(sidePx.worldPosition[1]).toBeCloseTo(0.15)
+    expect(sidePx.worldPosition[0]).toBeCloseTo(2)
+  })
+
+  it('adjacent foundation snaps flush at the same height', () => {
+    const part = getPart(foundationId)!
+    const piece = mkFoundation([0, 0.15, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const sidePx = anchors.find((wa) => wa.anchor.id === 'side-px')!
+    const candidate = {
+      worldAnchor: sidePx,
+      worldPosition: sidePx.worldPosition,
+      distance: 0,
+      slideOffset: 0 as const,
+    }
+    const pos = computeSnapPosition(part, candidate)
+    // Ghost center: anchor_x + ghost.d/2 = 2 + 2 = 4; same Y as host
+    expect(pos[0]).toBeCloseTo(4)
+    expect(pos[1]).toBeCloseTo(0.15) // NOT elevated — same level as placed foundation
+    expect(pos[2]).toBeCloseTo(0)
+  })
+
+  it('edge anchors do not accept foundation (regression — prevents elevated offset snap)', () => {
+    const part = getPart(foundationId)!
+    const piece = mkFoundation([0, 0.15, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const edgeAnchors = anchors.filter((wa) => wa.anchor.surface === 'edge')
+    for (const ea of edgeAnchors) {
+      expect(ea.anchor.accepts).not.toContain('foundation')
+    }
+  })
+
+  it('findSnapCandidates returns a side anchor as the nearest candidate when hovering beside the foundation', () => {
+    const part = getPart(foundationId)!
+    const piece = mkFoundation([0, 0.15, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    // Cursor near the right face of the placed foundation
+    const cursor: Vec3 = [2.5, 0.15, 0]
+    const candidates = findSnapCandidates('foundation', cursor, anchors, 5, part)
+    expect(candidates.length).toBeGreaterThan(0)
+    // The nearest candidate must be a SIDE anchor (at center height) — not an edge anchor
+    expect(candidates[0].worldAnchor.anchor.surface).toBe('side')
+    // And no edge anchor should appear in the results (edge anchors no longer accept 'foundation')
+    const edgeCandidates = candidates.filter((c) => c.worldAnchor.anchor.surface === 'edge')
+    expect(edgeCandidates).toHaveLength(0)
+  })
+})
