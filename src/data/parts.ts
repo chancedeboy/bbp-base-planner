@@ -9,10 +9,17 @@ const VERSION = '2.0'
 const ACCEPTS_WALL_LIKE: Category[] = ['wall', 'door', 'window', 'gate']
 const ACCEPTS_ON_FLOOR: Category[] = ['wall', 'door', 'window', 'gate', 'pillar', 'stair']
 const ACCEPTS_ON_WALL_TOP: Category[] = ['wall', 'floor', 'roof']
-const ACCEPTS_FOUNDATION_TOP: Category[] = ['wall', 'floor', 'foundation', 'pillar']
-// Edge anchors are for pieces that STAND ON the foundation edge (walls, pillars).
-// Foundations placed side-by-side use the separate side anchors below.
-const ACCEPTS_FOUNDATION_EDGE: Category[] = ['wall', 'floor', 'pillar']
+// Foundations are flat slabs — same pieces that stand on a floor edge stand on
+// a foundation edge. Plus 'floor' for second-story stacks and 'foundation' for
+// vertical stacking via the top center.
+const ACCEPTS_FOUNDATION_TOP: Category[] = [
+  'wall', 'door', 'window', 'gate', 'pillar', 'stair', 'floor', 'foundation',
+]
+// Foundation edges: anything that stands on the perimeter. Excludes 'foundation'
+// (side-by-side foundations use the separate side anchors below, not the edge).
+const ACCEPTS_FOUNDATION_EDGE: Category[] = [
+  'wall', 'door', 'window', 'gate', 'pillar', 'stair', 'floor',
+]
 
 // Anchor sets for common piece shapes. Inputs are dimensions; outputs are
 // SnapAnchor arrays in local space (piece center is origin).
@@ -36,6 +43,9 @@ function wallAnchors(w: number, h: number): SnapAnchor[] {
 
 // Floor-like piece (flat slab). Edges are placement points for walls;
 // top accepts pillars and walls; bottom is for downward stairs.
+// Side anchors at center height allow floor-to-floor side-by-side placement
+// (same fix pattern as foundations — without these the floor would snap to
+// its neighbor's top edge and float lifted).
 function floorAnchors(w: number, h: number, d: number): SnapAnchor[] {
   return [
     { id: 'edge-px', position: [w / 2, h / 2, 0], normal: [1, 0, 0], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
@@ -44,6 +54,10 @@ function floorAnchors(w: number, h: number, d: number): SnapAnchor[] {
     { id: 'edge-nz', position: [0, h / 2, -d / 2], normal: [0, 0, -1], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
     { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_ON_FLOOR },
     { id: 'bottom', position: [0, -h / 2, 0], normal: [0, -1, 0], surface: 'bottom', accepts: ['stair'] },
+    { id: 'side-px', position: [w / 2, 0, 0], normal: [1, 0, 0], surface: 'side', accepts: ['floor'] },
+    { id: 'side-nx', position: [-w / 2, 0, 0], normal: [-1, 0, 0], surface: 'side', accepts: ['floor'] },
+    { id: 'side-pz', position: [0, 0, d / 2], normal: [0, 0, 1], surface: 'side', accepts: ['floor'] },
+    { id: 'side-nz', position: [0, 0, -d / 2], normal: [0, 0, -1], surface: 'side', accepts: ['floor'] },
   ]
 }
 

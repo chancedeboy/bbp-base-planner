@@ -465,3 +465,114 @@ describe('foundation-to-foundation side snap', () => {
     expect(edgeCandidates).toHaveLength(0)
   })
 })
+
+describe('wall-sized pieces snap to foundation edges (doors, windows, gates, stairs)', () => {
+  const mkFoundation = (): PlacedPiece => ({
+    uuid: 'f1',
+    partId: 'foundation-triangle',
+    position: [0, 0.15, 0],
+    rotation: [0, 0, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  })
+
+  it.each([
+    ['gate', 'single-garage-door'],
+    ['gate', 'large-gate'],
+    ['gate', 'double-garage-door'],
+    ['door', 'large-door'],
+    ['door', 'small-door'],
+    ['window', 'large-window'],
+    ['window', 'small-window'],
+  ])('a %s (%s) snaps to a foundation edge at the correct height', (category, partId) => {
+    const foundation = getPart('foundation-triangle')!
+    const ghost = getPart(partId)!
+    const piece = mkFoundation()
+    const anchors = computeWorldAnchorsForPiece(piece, foundation)
+    const edgePx = anchors.find((wa) => wa.anchor.id === 'edge-px')!
+    expect(edgePx.anchor.accepts).toContain(category as Category)
+
+    const candidate = {
+      worldAnchor: edgePx,
+      worldPosition: edgePx.worldPosition,
+      distance: 0,
+      slideOffset: 0 as const,
+    }
+    const pos = computeSnapPosition(ghost, candidate)
+    // Ghost should stand on the foundation top: its base lines up with foundation top
+    const expectedY = edgePx.worldPosition[1] + ghost.dimensions.h / 2
+    expect(pos[1]).toBeCloseTo(expectedY)
+    // Bottom of ghost = foundation top (0.3)
+    expect(pos[1] - ghost.dimensions.h / 2).toBeCloseTo(0.3)
+  })
+
+  it('garage door hovering near a foundation edge produces a snap candidate (regression — was free-form only)', () => {
+    const foundation = getPart('foundation-triangle')!
+    const gate = getPart('single-garage-door')!
+    const piece = mkFoundation()
+    const anchors = computeWorldAnchorsForPiece(piece, foundation)
+    // Cursor near east foundation edge
+    const cursor: Vec3 = [2, 0.3, 0]
+    const candidates = findSnapCandidates('gate', cursor, anchors, 3, gate)
+    expect(candidates.length).toBeGreaterThan(0)
+    // Nearest candidate is the east edge of the foundation
+    expect(candidates[0].worldAnchor.anchor.id).toBe('edge-px')
+  })
+})
+
+describe('floor-to-floor side snap', () => {
+  const floorId = 'large-floor'
+  const mkFloor = (position: Vec3): PlacedPiece => ({
+    uuid: 'fl1',
+    partId: floorId,
+    position,
+    rotation: [0, 0, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  })
+
+  it('floor has side anchors at center height', () => {
+    const part = getPart(floorId)! // h=0.2
+    const piece = mkFloor([0, 0.5, 0]) // center at y=0.5 (above some foundation+walls)
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const sidePx = anchors.find((wa) => wa.anchor.id === 'side-px')
+    expect(sidePx).toBeDefined()
+    expect(sidePx!.worldPosition[1]).toBeCloseTo(0.5) // center height, NOT 0.6 (top edge)
+  })
+
+  it('adjacent floor snaps flush at the same height', () => {
+    const part = getPart(floorId)! // w=4, h=0.2, d=4
+    const piece = mkFloor([0, 0.5, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const sidePx = anchors.find((wa) => wa.anchor.id === 'side-px')!
+    const candidate = {
+      worldAnchor: sidePx,
+      worldPosition: sidePx.worldPosition,
+      distance: 0,
+      slideOffset: 0 as const,
+    }
+    const pos = computeSnapPosition(part, candidate)
+    expect(pos[0]).toBeCloseTo(4)    // anchor.x (2) + push (ghost.d/2 = 2)
+    expect(pos[1]).toBeCloseTo(0.5)  // same height as host floor
+    expect(pos[2]).toBeCloseTo(0)
+  })
+
+  it('edge anchors do not accept floor (regression — would cause elevated offset)', () => {
+    const part = getPart(floorId)!
+    const piece = mkFloor([0, 0.5, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const edgeAnchors = anchors.filter((wa) => wa.anchor.surface === 'edge')
+    for (const ea of edgeAnchors) {
+      expect(ea.anchor.accepts).not.toContain('floor')
+    }
+  })
+
+  it('findSnapCandidates returns a side anchor as nearest when hovering beside a floor', () => {
+    const part = getPart(floorId)!
+    const piece = mkFloor([0, 0.5, 0])
+    const anchors = computeWorldAnchorsForPiece(piece, part)
+    const candidates = findSnapCandidates('floor', [2.5, 0.5, 0], anchors, 5, part)
+    expect(candidates.length).toBeGreaterThan(0)
+    expect(candidates[0].worldAnchor.anchor.surface).toBe('side')
+  })
+})
