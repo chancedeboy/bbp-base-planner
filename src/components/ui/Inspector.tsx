@@ -17,6 +17,7 @@ export default function Inspector() {
   const selectPiece = useBuildStore((s) => s.selectPiece)
   const upgradeTier = useBuildStore((s) => s.upgradeTier)
   const setPieceRotation = useBuildStore((s) => s.setPieceRotation)
+  const removePiece = useBuildStore((s) => s.removePiece)
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
 
   if (!selectedPieceId) return null
@@ -40,6 +41,11 @@ export default function Inspector() {
 
   const updateRotation = (newDeg: number) => {
     setPieceRotation(piece.uuid, [0, degToRad(newDeg), 0])
+  }
+
+  const handleDelete = () => {
+    removePiece(piece.uuid)
+    selectPiece(null)
   }
 
   return (
@@ -150,6 +156,16 @@ export default function Inspector() {
             {piece.position[2].toFixed(2)})
           </span>
         </div>
+      </section>
+
+      <section className="p-3 border-t border-gray-800">
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="w-full px-3 py-2 text-xs font-medium rounded border border-red-900 bg-red-950 text-red-200 hover:bg-red-900 hover:border-red-700 transition-colors"
+        >
+          Delete Piece <span className="text-red-400 ml-1">(Del)</span>
+        </button>
       </section>
     </aside>
   )

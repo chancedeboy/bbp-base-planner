@@ -77,12 +77,14 @@ export default function EditorCanvas() {
   const selectPiece = useBuildStore((s) => s.selectPiece)
   const rotateGhost = useBuildStore((s) => s.rotateGhost)
   const rotatePiece = useBuildStore((s) => s.rotatePiece)
+  const removePiece = useBuildStore((s) => s.removePiece)
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const cycleSnapCandidate = useBuildStore((s) => s.cycleSnapCandidate)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
 
   // Keyboard: ESC clears selection. R / Shift+R rotate whichever is active —
   // the ghost during placement, or the selected placed piece otherwise.
+  // Delete / Backspace removes the selected placed piece.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -103,6 +105,13 @@ export default function EditorCanvas() {
           e.preventDefault()
           rotatePiece(selectedPieceId, deltaRad)
         }
+        return
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPieceId) {
+        e.preventDefault()
+        removePiece(selectedPieceId)
+        selectPiece(null)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -113,6 +122,7 @@ export default function EditorCanvas() {
     rotationStep,
     rotateGhost,
     rotatePiece,
+    removePiece,
     selectPart,
     selectPiece,
   ])

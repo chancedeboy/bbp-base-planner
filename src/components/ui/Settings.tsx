@@ -79,6 +79,11 @@ export default function Settings({ onClose }: Props) {
               candidates (while placing)
             </li>
             <li><kbd className="text-gray-300">ESC</kbd> — cancel placement</li>
+            <li>
+              <kbd className="text-gray-300">Del</kbd>{' '}
+              <kbd className="text-gray-300">Backspace</kbd> — delete
+              selected piece
+            </li>
           </ul>
         </section>
       </div>
