@@ -585,6 +585,27 @@ describe('multi-story snap disambiguation (regression)', () => {
     expect(candidates[0].worldAnchor.pieceUuid).toBe('fl-2')
   })
 
+  it('roof hovering over the interior of a wall box picks up wall-top elevation (not ground)', () => {
+    // Regression: with single-point topElevationAt, the cursor over the box
+    // interior had cursor.y=0 and roof wall-top candidates fell outside
+    // SNAP_RADIUS=3. computeElevation probes the ghost's footprint, so the
+    // 4×4 roof's corners land on the surrounding walls and lift cursor.y.
+    const roofPart = getPart('large-slope-roof')! // 4×1.5×4 footprint
+    // Cursor over the box interior — air, no piece directly underneath
+    const cursorXZ: Vec3 = [0, 0, 0]
+    const cursorY = computeElevation(cursorXZ, roofPart, walls, PARTS_BY_ID)
+    // Roof footprint corners land on the perimeter walls (top y=3.3)
+    expect(cursorY).toBeCloseTo(3.3)
+
+    const cursor: Vec3 = [0, cursorY, 0]
+    const anchors = computeAllWorldAnchors(walls, PARTS_BY_ID)
+    const candidates = findSnapCandidates('roof', cursor, anchors, 3, roofPart)
+    // At least one wall-top snap candidate must now be in range
+    expect(candidates.length).toBeGreaterThan(0)
+    const wallTopCandidates = candidates.filter((c) => c.worldAnchor.anchor.surface === 'top')
+    expect(wallTopCandidates.length).toBeGreaterThan(0)
+  })
+
   it('cursor over empty ground (old behavior) → foundation edge ranks first', () => {
     // Cursor at the foundation's east edge XZ, no piece overhead at that point.
     // topElevationAt at (2, 0, 0): the foundation extends to x=2 (boundary), so

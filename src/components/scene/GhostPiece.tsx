@@ -11,7 +11,6 @@ import {
   findSnapCandidates,
   gridSnapPoint,
   rankCandidatesByCoverage,
-  topElevationAt,
   type Vec3,
 } from '../../lib/snap'
 
@@ -47,12 +46,12 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
 
     // The raw cursor comes from the BuildPad (ground plane), so cursor.y is
     // ~0 regardless of what the mouse is hovering over. Replace its Y with
-    // the elevation of whatever placed piece's footprint contains the cursor.
-    // This lets snap ranking distinguish stories — e.g. when the mouse is
-    // over a second-story floor, the cursor's Y matches the floor's top, so
-    // the second-story floor's edge anchors are nearer than the foundation's.
+    // the elevation probed around the GHOST'S footprint — this is what lets
+    // snap ranking distinguish stories AND correctly elevate roofs/floors
+    // hovering over the interior of a wall box (where the cursor XZ is over
+    // empty air but the ghost's corners sit on the surrounding walls).
     const cursorXZ: Vec3 = [cursor.x, 0, cursor.z]
-    const cursorY = topElevationAt(cursorXZ, pieces, PARTS_BY_ID)
+    const cursorY = computeElevation(cursorXZ, part, pieces, PARTS_BY_ID)
     const cursorVec: Vec3 = [cursor.x, cursorY, cursor.z]
     let position: Vec3
     let rotation: Vec3 = ghostRotation
@@ -80,9 +79,8 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
           rotation = computeSnapRotation(candidate)
         }
       } else {
-        // No anchor in range — float at cursor, elevated over what's beneath
-        const elevation = computeElevation(cursorVec, part, pieces, PARTS_BY_ID)
-        position = [cursorVec[0], elevation + part.dimensions.h / 2, cursorVec[2]]
+        // No anchor in range — float at cursor at the elevation we already computed
+        position = [cursorVec[0], cursorY + part.dimensions.h / 2, cursorVec[2]]
       }
     } else {
       // Free mode: 0.25m grid + elevation over placed pieces
