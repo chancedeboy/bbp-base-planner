@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls, Grid, Stats } from '@react-three/drei'
 import { Vector3 } from 'three'
@@ -6,7 +6,8 @@ import { useBuildStore } from '../../state/useBuildStore'
 import Piece from './Piece'
 import GhostPiece from './GhostPiece'
 import CameraController from './CameraController'
-import type { Vec3 } from '../../lib/snap'
+import { computeBuildBounds, detectFloorLevels, type Vec3 } from '../../lib/snap'
+import { PARTS_BY_ID } from '../../data/parts'
 
 interface BuildPadProps {
   cursorRef: React.RefObject<Vector3 | null>
@@ -56,6 +57,67 @@ function BuildPad({ cursorRef, ghostPoseRef }: BuildPadProps) {
   )
 }
 
+// An invisible placement plane positioned at the current floor surface level,
+// sized to the building's footprint. Used in interior mode so mouse rays hit
+// the floor the user is standing on instead of the far-away ground plane.
+function InteriorPad({ cursorRef, ghostPoseRef }: BuildPadProps) {
+  const pieces = useBuildStore((s) => s.pieces)
+  const floorLevel = useBuildStore((s) => s.floorLevel)
+  const floorMarkers = useBuildStore((s) => s.floorMarkers)
+  const placePiece = useBuildStore((s) => s.placePiece)
+  const selectedPartId = useBuildStore((s) => s.selectedPartId)
+  const selectedPieceId = useBuildStore((s) => s.selectedPieceId)
+  const selectPiece = useBuildStore((s) => s.selectPiece)
+
+  const allFloorLevels = useMemo(() => {
+    const detected = detectFloorLevels(pieces, PARTS_BY_ID)
+    const combined = new Map<number, true>()
+    for (const y of detected) combined.set(Math.round(y * 10) / 10, true)
+    for (const y of floorMarkers) combined.set(Math.round(y * 10) / 10, true)
+    return [...combined.keys()].sort((a, b) => a - b)
+  }, [pieces, floorMarkers])
+
+  const floorY = allFloorLevels[Math.min(floorLevel, allFloorLevels.length - 1)] ?? 0
+
+  const bounds = useMemo(() => computeBuildBounds(pieces, PARTS_BY_ID), [pieces])
+  const cx = bounds ? (bounds.minX + bounds.maxX) / 2 : 0
+  const cz = bounds ? (bounds.minZ + bounds.maxZ) / 2 : 0
+  const pw = bounds ? Math.max(bounds.maxX - bounds.minX, 2) : 20
+  const pd = bounds ? Math.max(bounds.maxZ - bounds.minZ, 2) : 20
+
+  const handleMove = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    cursorRef.current = e.point.clone()
+  }
+
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation()
+    if (selectedPartId) {
+      const pose = ghostPoseRef.current
+      if (pose) {
+        placePiece(selectedPartId, pose.position, pose.rotation)
+      } else {
+        placePiece(selectedPartId, [e.point.x, floorY, e.point.z])
+      }
+      return
+    }
+    if (selectedPieceId) selectPiece(null)
+  }
+
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[cx, floorY + 0.005, cz]}
+      onPointerMove={handleMove}
+      onClick={handleClick}
+    >
+      <planeGeometry args={[pw, pd]} />
+      {/* Invisible — only here to catch pointer events at floor level */}
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  )
+}
+
 function Pieces() {
   const pieces = useBuildStore((s) => s.pieces)
   return (
@@ -82,6 +144,7 @@ export default function EditorCanvas() {
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const cycleSnapCandidate = useBuildStore((s) => s.cycleSnapCandidate)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
+  const mode = useBuildStore((s) => s.mode)
 
   // Keyboard: ESC clears selection. R / Shift+R rotate whichever is active —
   // the ghost during placement, or the selected placed piece otherwise.
@@ -174,6 +237,9 @@ export default function EditorCanvas() {
         shadow-mapSize-height={1024}
       />
       <BuildPad cursorRef={cursorRef} ghostPoseRef={ghostPoseRef} />
+      {mode === 'interior' && (
+        <InteriorPad cursorRef={cursorRef} ghostPoseRef={ghostPoseRef} />
+      )}
       <Grid
         args={[100, 100]}
         cellSize={1}
