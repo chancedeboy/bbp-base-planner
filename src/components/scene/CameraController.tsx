@@ -58,7 +58,7 @@ export default function CameraController() {
     forward.normalize()
 
     // Right = forward × up (Y up)
-    const right = new Vector3(forward.z, 0, -forward.x)
+    const right = new Vector3(-forward.z, 0, forward.x)
 
     const move = new Vector3()
     if (keys.has('w')) move.add(forward)
