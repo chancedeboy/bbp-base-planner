@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, type RefObject, type MutableRefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Vector3, type Mesh } from 'three'
+import { Plane, Raycaster, Vector3, type Mesh } from 'three'
 import { CATEGORY_COLORS, PARTS_BY_ID, getPart } from '../../data/parts'
 import { useBuildStore } from '../../state/useBuildStore'
 import {
@@ -8,6 +8,7 @@ import {
   computeElevation,
   computeSnapPosition,
   computeSnapRotation,
+  detectFloorLevels,
   findSnapCandidates,
   gridSnapPoint,
   rankCandidatesByCoverage,
@@ -35,10 +36,30 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
   const snapCandidateIndex = useBuildStore((s) => s.snapCandidateIndex)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
   const pieces = useBuildStore((s) => s.pieces)
+  const floorLevel = useBuildStore((s) => s.floorLevel)
+  const floorMarkers = useBuildStore((s) => s.floorMarkers)
 
   const meshRef = useRef<Mesh>(null)
   const shiftRef = useRef(false)
   const part = selectedPartId ? getPart(selectedPartId) : null
+
+  // Pre-allocated Three.js objects so useFrame never triggers GC.
+  const raycasterRef = useRef(new Raycaster())
+  const floorPlaneRef = useRef(new Plane(new Vector3(0, 1, 0), 0))
+  const hitTargetRef = useRef(new Vector3())
+
+  // Current floor surface Y — updated whenever floor level or pieces change.
+  // Stored in a ref so useFrame reads it without causing re-renders.
+  const floorYRef = useRef(0) as MutableRefObject<number>
+  const floorY = useMemo(() => {
+    const detected = detectFloorLevels(pieces, PARTS_BY_ID)
+    const combined = new Map<number, true>()
+    for (const y of detected) combined.set(Math.round(y * 10) / 10, true)
+    for (const y of floorMarkers) combined.set(Math.round(y * 10) / 10, true)
+    const levels = [...combined.keys()].sort((a, b) => a - b)
+    return levels[Math.min(floorLevel, levels.length - 1)] ?? 0
+  }, [pieces, floorMarkers, floorLevel])
+  useEffect(() => { floorYRef.current = floorY }, [floorY])
 
   // Track Shift key state so free-placement can enter full free-form mode.
   useEffect(() => {
@@ -61,20 +82,47 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
     [pieces]
   )
 
-  useFrame(() => {
+  useFrame(({ camera, pointer }) => {
     const mesh = meshRef.current
-    const cursor = cursorRef.current
-    if (!mesh || !part || !cursor) return
+    if (!mesh || !part) return
 
-    // The raw cursor comes from the BuildPad (ground plane), so cursor.y is
-    // ~0 regardless of what the mouse is hovering over. Replace its Y with
-    // the elevation probed around the GHOST'S footprint — this is what lets
-    // snap ranking distinguish stories AND correctly elevate roofs/floors
-    // hovering over the interior of a wall box (where the cursor XZ is over
-    // empty air but the ghost's corners sit on the surrounding walls).
-    const cursorXZ: Vec3 = [cursor.x, 0, cursor.z]
+    const isInterior = useBuildStore.getState().mode === 'interior'
+
+    // Determine cursor XZ.
+    //
+    // Exterior: read from cursorRef (set by BuildPad ground-plane raycasting).
+    //
+    // Interior: cast a ray from the camera through the mouse pointer and
+    // intersect a mathematical horizontal plane at the current floor level.
+    // This works regardless of where the camera is looking — no need to aim
+    // at the floor mesh. If the ray points upward (ceiling/sky) we freeze
+    // the ghost at its last position.
+    let cursorX: number
+    let cursorZ: number
+
+    if (isInterior) {
+      floorPlaneRef.current.constant = -floorYRef.current
+      raycasterRef.current.setFromCamera(pointer, camera)
+      const hit = raycasterRef.current.ray.intersectPlane(
+        floorPlaneRef.current,
+        hitTargetRef.current
+      )
+      if (!hit) {
+        // Ray is pointing up or horizontal — keep the ghost where it was.
+        return
+      }
+      cursorX = hitTargetRef.current.x
+      cursorZ = hitTargetRef.current.z
+    } else {
+      const cursor = cursorRef.current
+      if (!cursor) return
+      cursorX = cursor.x
+      cursorZ = cursor.z
+    }
+
+    const cursorXZ: Vec3 = [cursorX, 0, cursorZ]
     const cursorY = computeElevation(cursorXZ, part, pieces, PARTS_BY_ID)
-    const cursorVec: Vec3 = [cursor.x, cursorY, cursor.z]
+    const cursorVec: Vec3 = [cursorX, cursorY, cursorZ]
     let position: Vec3
     let rotation: Vec3 = ghostRotation
 
@@ -87,8 +135,7 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
         part
       )
       // Re-rank so 'centered over a wall box' wins over 'on top of the nearest
-      // single wall' for roofs/floors — the user doesn't need to scroll to find
-      // the centered placement in the common box-with-roof case.
+      // single wall' for roofs/floors.
       const candidates = rankCandidatesByCoverage(rawCandidates, part, pieces, PARTS_BY_ID)
       if (candidates.length > 0) {
         const idx =
@@ -96,12 +143,10 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
           candidates.length
         const candidate = candidates[idx]
         position = computeSnapPosition(part, candidate)
-        // Snap rotation only when user hasn't manually rotated (ghostRotation = identity)
         if (ghostRotation[1] === 0) {
           rotation = computeSnapRotation(candidate)
         }
       } else {
-        // No anchor in range — float at cursor at the elevation we already computed
         position = [cursorVec[0], cursorY + part.dimensions.h / 2, cursorVec[2]]
       }
     } else {
@@ -119,7 +164,6 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
 
     mesh.position.set(position[0], position[1], position[2])
     mesh.rotation.set(rotation[0], rotation[1], rotation[2])
-
     ghostPoseRef.current = { position, rotation }
   })
 
