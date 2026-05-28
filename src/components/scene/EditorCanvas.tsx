@@ -108,6 +108,19 @@ export default function EditorCanvas() {
         return
       }
 
+      // Q / E cycle snap candidates — keyboard equivalent of mouse wheel for
+      // laptop users without a scroll wheel. Same gating as the wheel handler.
+      if ((e.key === 'q' || e.key === 'Q') && selectedPartId && snapEnabled) {
+        e.preventDefault()
+        cycleSnapCandidate(-1)
+        return
+      }
+      if ((e.key === 'e' || e.key === 'E') && selectedPartId && snapEnabled) {
+        e.preventDefault()
+        cycleSnapCandidate(1)
+        return
+      }
+
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPieceId) {
         e.preventDefault()
         removePiece(selectedPieceId)
@@ -125,6 +138,8 @@ export default function EditorCanvas() {
     removePiece,
     selectPart,
     selectPiece,
+    snapEnabled,
+    cycleSnapCandidate,
   ])
 
   // Mouse wheel cycles snap candidates while a part is selected & snap is on.

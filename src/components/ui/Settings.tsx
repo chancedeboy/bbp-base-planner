@@ -75,8 +75,10 @@ export default function Settings({ onClose }: Props) {
               rotation step
             </li>
             <li>
-              <kbd className="text-gray-300">Mouse wheel</kbd> — cycle snap
-              candidates (while placing)
+              <kbd className="text-gray-300">Mouse wheel</kbd> /{' '}
+              <kbd className="text-gray-300">Q</kbd>{' '}
+              <kbd className="text-gray-300">E</kbd> — cycle snap candidates
+              (while placing)
             </li>
             <li><kbd className="text-gray-300">ESC</kbd> — cancel placement</li>
             <li>
