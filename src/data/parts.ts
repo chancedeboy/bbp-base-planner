@@ -339,7 +339,7 @@ export const PARTS: PartDef[] = [
   // ─── Floors & Roofs ──────────────────────────────────────────────
   {
     id: 'large-floor',
-    name: 'Large Floor/Roof',
+    name: 'Large Floor',
     category: 'floor',
     dimensions: { w: 4, h: 0.2, d: 4 },
     snapAnchors: floorAnchors(4, 0.2, 4),
@@ -355,7 +355,7 @@ export const PARTS: PartDef[] = [
   },
   {
     id: 'small-floor',
-    name: 'Small Floor/Roof',
+    name: 'Small Floor',
     category: 'floor',
     dimensions: { w: 2, h: 0.2, d: 4 },
     snapAnchors: floorAnchors(2, 0.2, 4),
@@ -371,7 +371,7 @@ export const PARTS: PartDef[] = [
   },
   {
     id: 'large-triangle-floor',
-    name: 'Large Triangle Floor/Roof',
+    name: 'Large Triangle Floor',
     category: 'floor',
     dimensions: { w: 4, h: 0.2, d: 4 },
     snapAnchors: [],
