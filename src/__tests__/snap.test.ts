@@ -10,6 +10,7 @@ import {
   computeSnapRotation,
   computeElevation,
   isPointInsideFootprint,
+  rankCandidatesByCoverage,
   type Vec3,
 } from '../lib/snap'
 import { PARTS_BY_ID, getPart } from '../data/parts'
@@ -422,6 +423,63 @@ describe('computeSnapRotation', () => {
       pieceRotation: [0, Math.PI, 0],
     })
     expect(computeSnapRotation(c)).toEqual([0, Math.PI, 0])
+  })
+})
+
+describe('rankCandidatesByCoverage', () => {
+  // Build the user-reported scenario: 4-wall box on a foundation. Hover a roof
+  // near one wall and expect the 'centered over the box' candidate to win
+  // without scrolling.
+  const wallH = 3
+  const wallCenterY = 0.15 + 0.15 + wallH / 2 // 1.8
+  const mkWall = (x: number, z: number, yaw: number, uuid: string): PlacedPiece => ({
+    uuid,
+    partId: 'large-wall',
+    position: [x, wallCenterY, z],
+    rotation: [0, yaw, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  })
+  const walls: PlacedPiece[] = [
+    mkWall(2, 0, Math.PI / 2, 'w-east'),
+    mkWall(-2, 0, Math.PI / 2, 'w-west'),
+    mkWall(0, 2, 0, 'w-north'),
+    mkWall(0, -2, 0, 'w-south'),
+  ]
+
+  it('ranks the centered-over-box candidate first when hovering near a single wall', () => {
+    const floor = getPart('large-floor')! // 4×0.2×4
+    const anchors = computeAllWorldAnchors(walls, PARTS_BY_ID)
+    // Cursor hovering right over the east wall top — the OLD sort would put
+    // the slide-0 (centered on east wall) candidate first, which is wrong.
+    const cursor: Vec3 = [2, wallCenterY + wallH / 2, 0]
+    const raw = findSnapCandidates('floor', cursor, anchors, 5, floor)
+    const ranked = rankCandidatesByCoverage(raw, floor, walls, PARTS_BY_ID)
+    expect(ranked.length).toBeGreaterThan(0)
+    // The winning candidate's snapped position must be at the box center (x≈0, z≈0)
+    const winnerPos = computeSnapPosition(floor, ranked[0])
+    expect(winnerPos[0]).toBeCloseTo(0)
+    expect(winnerPos[2]).toBeCloseTo(0)
+  })
+
+  it('leaves single-host scenarios sorted by distance (no other pieces to cover)', () => {
+    // Only one wall — coverage is 0 for every candidate, so distance breaks the tie.
+    const single: PlacedPiece[] = [mkWall(2, 0, Math.PI / 2, 'w-lone')]
+    const floor = getPart('large-floor')!
+    const anchors = computeAllWorldAnchors(single, PARTS_BY_ID)
+    const cursor: Vec3 = [2, wallCenterY + wallH / 2, 0]
+    const raw = findSnapCandidates('floor', cursor, anchors, 5, floor)
+    const ranked = rankCandidatesByCoverage(raw, floor, single, PARTS_BY_ID)
+    // First candidate is still the one closest to the cursor (slide-0 on the wall)
+    expect(ranked[0].distance).toBeCloseTo(raw[0].distance)
+  })
+
+  it('returns input unchanged when there is nothing to score against', () => {
+    const floor = getPart('large-floor')!
+    const anchors = computeAllWorldAnchors(walls, PARTS_BY_ID)
+    const cursor: Vec3 = [2, wallCenterY + wallH / 2, 0]
+    const raw = findSnapCandidates('floor', cursor, anchors, 5, floor)
+    expect(rankCandidatesByCoverage(raw, floor, [], PARTS_BY_ID)).toEqual(raw)
   })
 })
 

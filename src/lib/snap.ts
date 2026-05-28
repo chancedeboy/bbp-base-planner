@@ -221,6 +221,50 @@ export function computeElevation(
   return maxTop
 }
 
+// Re-rank candidates so the one that puts the ghost over the most existing
+// pieces wins. This is what makes a roof default to 'centered over the wall
+// box' instead of 'sitting on the single wall closest to the cursor' — the
+// centered slide candidate covers all 4 walls of a box, while edge candidates
+// only cover 1 or 2. The host piece is excluded so that wall-on-wall stacking
+// (single piece host) still falls back to distance-from-cursor ordering.
+export function rankCandidatesByCoverage(
+  candidates: SnapCandidate[],
+  ghostPart: PartDef,
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): SnapCandidate[] {
+  if (candidates.length <= 1 || pieces.length === 0) return candidates
+  const { w, d } = ghostPart.dimensions
+  const scored = candidates.map((c) => {
+    const pos = computeSnapPosition(ghostPart, c)
+    const probes: Vec3[] = [
+      [pos[0] - w / 2, 0, pos[2] - d / 2],
+      [pos[0] + w / 2, 0, pos[2] - d / 2],
+      [pos[0] - w / 2, 0, pos[2] + d / 2],
+      [pos[0] + w / 2, 0, pos[2] + d / 2],
+      [pos[0], 0, pos[2]],
+    ]
+    const covered = new Set<string>()
+    for (const piece of pieces) {
+      if (piece.uuid === c.worldAnchor.pieceUuid) continue
+      const part = partsById[piece.partId]
+      if (!part) continue
+      for (const p of probes) {
+        if (isPointInsideFootprint(p, piece, part)) {
+          covered.add(piece.uuid)
+          break
+        }
+      }
+    }
+    return { candidate: c, coverage: covered.size }
+  })
+  scored.sort((a, b) => {
+    if (b.coverage !== a.coverage) return b.coverage - a.coverage
+    return a.candidate.distance - b.candidate.distance
+  })
+  return scored.map((s) => s.candidate)
+}
+
 // Compute a snapped yaw that aligns the ghost's primary face with the candidate's
 // normal. For 'edge' and 'side' anchors, walls should face perpendicular to the
 // anchor normal (i.e., the wall's broad face matches the normal direction).

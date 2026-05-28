@@ -10,6 +10,7 @@ import {
   computeSnapRotation,
   findSnapCandidates,
   gridSnapPoint,
+  rankCandidatesByCoverage,
   type Vec3,
 } from '../../lib/snap'
 
@@ -48,13 +49,17 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
     let rotation: Vec3 = ghostRotation
 
     if (snapEnabled) {
-      const candidates = findSnapCandidates(
+      const rawCandidates = findSnapCandidates(
         part.category,
         cursorVec,
         worldAnchors,
         SNAP_RADIUS,
         part
       )
+      // Re-rank so 'centered over a wall box' wins over 'on top of the nearest
+      // single wall' for roofs/floors — the user doesn't need to scroll to find
+      // the centered placement in the common box-with-roof case.
+      const candidates = rankCandidatesByCoverage(rawCandidates, part, pieces, PARTS_BY_ID)
       if (candidates.length > 0) {
         const idx =
           ((snapCandidateIndex % candidates.length) + candidates.length) %
