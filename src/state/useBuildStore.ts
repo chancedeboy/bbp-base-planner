@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
+import type { PersistedBuild } from '../lib/migrations'
 import type {
   BuildState,
   PlacedPiece,
@@ -73,6 +74,7 @@ interface BuildStoreActions {
   setServerConfig: (cfg: Partial<ServerConfig>) => void
   clear: () => void
   undo: () => void
+  loadBuild: (build: PersistedBuild) => void
 
   // Ghost / placement controls
   setGhostRotation: (rot: [number, number, number]) => void
@@ -106,6 +108,7 @@ const initialState: BuildState &
 
 export const useBuildStore = create<BuildStore>()(
   devtools(
+    persist(
     (set) => ({
       ...initialState,
       selectPart: (id) =>
@@ -254,7 +257,39 @@ export const useBuildStore = create<BuildStore>()(
           'cycleSnapCandidate'
         ),
       resetSnapCandidate: () => set({ snapCandidateIndex: 0 }, false, 'resetSnapCandidate'),
+
+      loadBuild: (build) =>
+        set(
+          {
+            pieces: build.pieces,
+            meta: build.meta,
+            serverConfig: build.serverConfig,
+            snapEnabled: build.snapEnabled,
+            selectedPieceId: null,
+            selectedPartId: null,
+            pastPieces: [],
+            pendingCameraMove: null,
+            floorLevel: 0,
+            floorMarkers: [],
+            mode: 'exterior',
+          },
+          false,
+          'loadBuild'
+        ),
     }),
+    {
+      name: 'bbp-build',
+      // Only persist the build data — not ephemeral UI state like selection,
+      // undo history, ghost position, or pending camera moves.
+      partialize: (s) => ({
+        pieces: s.pieces,
+        meta: s.meta,
+        serverConfig: s.serverConfig,
+        snapEnabled: s.snapEnabled,
+        floorMarkers: s.floorMarkers,
+      }),
+    }
+    ),
     { name: 'bbp-build-store' }
   )
 )

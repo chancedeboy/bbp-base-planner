@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useBuildStore } from '../../state/useBuildStore'
 import { computeBuildCentroid, detectFloorLevels } from '../../lib/snap'
 import { PARTS_BY_ID } from '../../data/parts'
+import { encodeBuild } from '../../lib/serialise'
 import Settings from './Settings'
 
 // Standing eye height above a floor surface, in metres.
@@ -38,7 +39,19 @@ export default function TopBar() {
   const setFloorLevel = useBuildStore((s) => s.setFloorLevel)
   const toggleFloorMarker = useBuildStore((s) => s.toggleFloorMarker)
   const setPendingCameraMove = useBuildStore((s) => s.setPendingCameraMove)
+  const meta = useBuildStore((s) => s.meta)
+  const serverConfig = useBuildStore((s) => s.serverConfig)
   const [showSettings, setShowSettings] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = () => {
+    const encoded = encodeBuild({ pieces, meta, serverConfig, snapEnabled })
+    const url = `${window.location.origin}${window.location.pathname}?b=${encoded}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   // Merge auto-detected floors (from placed floor/foundation pieces) with any
   // manually pinned Y levels. This is the source of truth for navigation.
@@ -166,6 +179,18 @@ export default function TopBar() {
           />
           Snap
         </label>
+        <button
+          type="button"
+          onClick={handleShare}
+          className={`text-xs px-3 py-1 rounded border transition-colors ${
+            copied
+              ? 'bg-green-700 border-green-600 text-white'
+              : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+          }`}
+          title="Copy share URL to clipboard"
+        >
+          {copied ? 'Copied!' : 'Share'}
+        </button>
         <button
           type="button"
           onClick={() => setShowSettings(true)}

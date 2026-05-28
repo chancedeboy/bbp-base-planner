@@ -16,7 +16,7 @@ import {
   type Vec3,
 } from '../lib/snap'
 import { PARTS_BY_ID, getPart } from '../data/parts'
-import type { PlacedPiece } from '../data/types'
+import type { Category, PlacedPiece } from '../data/types'
 
 describe('rotateY', () => {
   it('returns input unchanged for 0 rotation', () => {

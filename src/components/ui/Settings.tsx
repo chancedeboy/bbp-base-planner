@@ -1,4 +1,6 @@
+import { useRef, useState } from 'react'
 import { useBuildStore } from '../../state/useBuildStore'
+import { buildToJson, jsonToBuild } from '../../lib/serialise'
 
 interface Props {
   onClose: () => void
@@ -9,6 +11,42 @@ const ROTATION_STEPS = [5, 15, 45, 90]
 export default function Settings({ onClose }: Props) {
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const setServerConfig = useBuildStore((s) => s.setServerConfig)
+  const pieces = useBuildStore((s) => s.pieces)
+  const meta = useBuildStore((s) => s.meta)
+  const serverConfig = useBuildStore((s) => s.serverConfig)
+  const snapEnabled = useBuildStore((s) => s.snapEnabled)
+  const loadBuild = useBuildStore((s) => s.loadBuild)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const handleExport = () => {
+    const json = buildToJson({ pieces, meta, serverConfig, snapEnabled })
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${meta.name.replace(/\s+/g, '-')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        loadBuild(jsonToBuild(evt.target?.result as string))
+        onClose()
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Invalid file.')
+      }
+    }
+    reader.readAsText(file)
+    // Reset so the same file can be re-imported after an error.
+    e.target.value = ''
+  }
 
   return (
     <div
@@ -57,6 +95,38 @@ export default function Settings({ onClose }: Props) {
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="mt-6 space-y-2">
+          <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+            Import / Export
+          </label>
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="flex-1 px-3 py-2 rounded text-sm bg-gray-800 border border-gray-700 hover:border-gray-600 transition-colors"
+            >
+              Export JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 px-3 py-2 rounded text-sm bg-gray-800 border border-gray-700 hover:border-gray-600 transition-colors"
+            >
+              Import JSON
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImport}
+            />
+          </div>
+          {importError && (
+            <p className="text-xs text-red-400 mt-1">{importError}</p>
+          )}
         </section>
 
         <section className="mt-6 text-xs text-gray-500">
