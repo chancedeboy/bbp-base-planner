@@ -3,9 +3,13 @@ import MobileSplash from './components/MobileSplash'
 import TopBar from './components/ui/TopBar'
 import PartsPalette from './components/ui/PartsPalette'
 import Inspector from './components/ui/Inspector'
+import ResourcePanel from './components/ui/ResourcePanel'
 import EditorCanvas from './components/scene/EditorCanvas'
+import { useBuildStore } from './state/useBuildStore'
 
 export default function App() {
+  const selectedPieceId = useBuildStore((s) => s.selectedPieceId)
+
   return (
     <ErrorBoundary>
       <MobileSplash />
@@ -16,7 +20,7 @@ export default function App() {
           <div className="flex-1 relative">
             <EditorCanvas />
           </div>
-          <Inspector />
+          {selectedPieceId ? <Inspector /> : <ResourcePanel />}
         </div>
       </div>
     </ErrorBoundary>
