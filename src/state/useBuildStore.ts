@@ -9,6 +9,11 @@ import type {
 import { DEFAULT_SERVER_CONFIG } from '../data/types'
 import { getPart } from '../data/parts'
 
+interface PendingCameraMove {
+  position: [number, number, number]
+  target: [number, number, number]
+}
+
 const initialMeta: BuildState['meta'] = {
   name: 'Untitled Base',
   description: '',
@@ -22,6 +27,15 @@ interface GhostState {
   ghostRotation: [number, number, number]
   // Index into the sorted snap candidates; mouse wheel cycles.
   snapCandidateIndex: number
+}
+
+interface CameraState {
+  // A pending camera move — CameraController applies it once then clears to null.
+  pendingCameraMove: PendingCameraMove | null
+  // Index into the current allFloorLevels array (0 = lowest detected floor).
+  floorLevel: number
+  // Manually pinned floor top-surface Y positions (supplements auto-detection).
+  floorMarkers: number[]
 }
 
 interface UndoState {
@@ -53,6 +67,9 @@ interface BuildStoreActions {
   rotatePiece: (uuid: string, deltaRad: number) => void
   toggleSnap: () => void
   setMode: (mode: 'exterior' | 'interior') => void
+  setPendingCameraMove: (move: PendingCameraMove | null) => void
+  setFloorLevel: (level: number) => void
+  toggleFloorMarker: (y: number) => void
   setServerConfig: (cfg: Partial<ServerConfig>) => void
   clear: () => void
   undo: () => void
@@ -65,11 +82,12 @@ interface BuildStoreActions {
   resetSnapCandidate: () => void
 }
 
-export type BuildStore = BuildState & GhostState & UndoState & BuildStoreActions
+export type BuildStore = BuildState & GhostState & UndoState & CameraState & BuildStoreActions
 
 const initialState: BuildState &
   GhostState &
-  UndoState & { selectedPartId: string | null } = {
+  UndoState &
+  CameraState & { selectedPartId: string | null } = {
   pieces: [],
   meta: initialMeta,
   snapEnabled: true,
@@ -81,6 +99,9 @@ const initialState: BuildState &
   ghostRotation: [0, 0, 0],
   snapCandidateIndex: 0,
   pastPieces: [],
+  pendingCameraMove: null,
+  floorLevel: 0,
+  floorMarkers: [],
 }
 
 export const useBuildStore = create<BuildStore>()(
@@ -99,17 +120,19 @@ export const useBuildStore = create<BuildStore>()(
         // stay at frame (utility/pillar/stair pieces with no upgrades).
         const part = getPart(partId)
         const defaultTier: Tier = part && part.maxTier !== 'frame' ? 't1' : 'frame'
-        const piece: PlacedPiece = {
-          uuid,
-          partId,
-          position,
-          rotation,
-          tier: defaultTier,
-          layer: 'exterior',
-        }
         set(
           (s) => ({
-            pieces: [...s.pieces, piece],
+            pieces: [
+              ...s.pieces,
+              {
+                uuid,
+                partId,
+                position,
+                rotation,
+                tier: defaultTier,
+                layer: s.mode === 'interior' ? 'interior' : 'exterior',
+              } satisfies PlacedPiece,
+            ],
             pastPieces: pushHistory(s),
             meta: { ...s.meta, updatedAt: new Date().toISOString() },
             snapCandidateIndex: 0,
@@ -162,6 +185,22 @@ export const useBuildStore = create<BuildStore>()(
         ),
       toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled }), false, 'toggleSnap'),
       setMode: (mode) => set({ mode }, false, 'setMode'),
+      setPendingCameraMove: (move) => set({ pendingCameraMove: move }, false, 'setPendingCameraMove'),
+      setFloorLevel: (level) => set({ floorLevel: level }, false, 'setFloorLevel'),
+      toggleFloorMarker: (y) =>
+        set(
+          (s) => {
+            const rounded = Math.round(y * 10) / 10
+            const exists = s.floorMarkers.some((m) => Math.abs(m - rounded) < 0.05)
+            return {
+              floorMarkers: exists
+                ? s.floorMarkers.filter((m) => Math.abs(m - rounded) >= 0.05)
+                : [...s.floorMarkers, rounded],
+            }
+          },
+          false,
+          'toggleFloorMarker'
+        ),
       setServerConfig: (cfg) =>
         set(
           (s) => ({ serverConfig: { ...s.serverConfig, ...cfg } }),

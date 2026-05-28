@@ -13,6 +13,10 @@ export interface WorldAnchor {
   // onto a 'top' or 'bottom' anchor inherits the host's yaw (keeps a wall
   // stacked on a 90°-rotated wall from landing perpendicular).
   pieceRotation: Vec3
+  // Host piece's dimensions — used by findSnapCandidates when expanding a
+  // slideAxis into ±1 candidates so the slide magnitude can account for the
+  // host's thickness (keeps roof slide=-1 centered over a box of inset walls).
+  pieceDimensions: { w: number; h: number; d: number }
   anchor: SnapAnchor
   worldPosition: Vec3
   worldNormal: Vec3
@@ -103,6 +107,7 @@ export function computeWorldAnchorsForPiece(
     return {
       pieceUuid: piece.uuid,
       pieceRotation: piece.rotation,
+      pieceDimensions: part.dimensions,
       anchor,
       worldPosition: addVec(piece.position, rotateY(anchor.position, yaw)),
       worldNormal: rotateY(anchor.normal, yaw),
@@ -144,7 +149,18 @@ export function findSnapCandidates(
       if (!ghostPart || !wa.worldSlideAxis) {
         return [{ pos: wa.worldPosition, offset: 0 as const }]
       }
-      const shift = ghostPart.dimensions.d / 2
+      // Slide magnitude = (ghost.d − host.d) / 2 along the slideAxis. This
+      // aligns the ghost's outer face with the host's outer face at slide=-1
+      // (so a roof's outer edge meets the wall's outer edge — which is the
+      // foundation edge when walls are inset). Old formula (ghost.d / 2)
+      // assumed walls sat ON the foundation edge; with inset walls that
+      // shifted the centered candidate off by host.d/2.
+      const sa = wa.anchor.slideAxis! // local slideAxis (set if ghostPart && worldSlideAxis)
+      const hostAlongSlide =
+        Math.abs(sa[0]) * wa.pieceDimensions.w +
+        Math.abs(sa[1]) * wa.pieceDimensions.h +
+        Math.abs(sa[2]) * wa.pieceDimensions.d
+      const shift = Math.max(0, (ghostPart.dimensions.d - hostAlongSlide) / 2)
       return [
         { pos: wa.worldPosition, offset: 0 as const },
         { pos: addVec(wa.worldPosition, scaleVec(wa.worldSlideAxis, shift)), offset: 1 as const },
@@ -174,7 +190,12 @@ export function findSnapCandidates(
 //   top    — ghost sits on top; center.x,z = candidate.x,z; center.y = candidate.y + ghost.h/2
 //   bottom — ghost hangs below
 //   side   — ghost butts up against the face; center pushed along normal by ghost.d/2
-//   edge   — ghost stands on the top edge; centered on edge line, lifted by ghost.h/2
+//   edge   — ghost stands on the top edge with its OUTER face flush with the
+//            host's edge: lifted by ghost.h/2, AND pushed INWARD (opposite the
+//            anchor normal) by ghost.d/2. The companion change is in
+//            findSnapCandidates — the slide magnitude is reduced by host.d/2
+//            so a roof slide=-1 still lands centered over the box despite the
+//            wall being inset.
 export function computeSnapPosition(
   ghostPart: PartDef,
   candidate: SnapCandidate
@@ -189,8 +210,10 @@ export function computeSnapPosition(
       return [a[0], a[1] + h / 2, a[2]]
     case 'bottom':
       return [a[0], a[1] - h / 2, a[2]]
-    case 'edge':
-      return [a[0], a[1] + h / 2, a[2]]
+    case 'edge': {
+      const inward = scaleVec(n, -d / 2)
+      return [a[0] + inward[0], a[1] + h / 2, a[2] + inward[2]]
+    }
     case 'side': {
       const offset = scaleVec(n, d / 2)
       return [a[0] + offset[0], a[1], a[2] + offset[2]]
@@ -199,13 +222,125 @@ export function computeSnapPosition(
   return a
 }
 
+// Computes the XZ centroid of all foundation/floor pieces in the build
+// (falls back to all pieces if none of those categories are present).
+// Returns [0, 0] for an empty build. Used to position the camera when entering
+// interior mode.
+export function computeBuildCentroid(
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): [number, number] {
+  const floors = pieces.filter((p) => {
+    const part = partsById[p.partId]
+    return part && (part.category === 'foundation' || part.category === 'floor')
+  })
+  const source = floors.length > 0 ? floors : pieces
+  if (source.length === 0) return [0, 0]
+  const sumX = source.reduce((acc, p) => acc + p.position[0], 0)
+  const sumZ = source.reduce((acc, p) => acc + p.position[2], 0)
+  return [sumX / source.length, sumZ / source.length]
+}
+
+// Returns the sorted list of floor top-surface Y positions derived from placed
+// foundation and floor pieces. Each distinct Y level represents one navigable
+// floor in interior mode. Stacked walls without an intervening floor piece do
+// NOT produce a new entry — the level comes from actual floor/foundation pieces.
+//
+// Foundations always define a floor level. Floor pieces only define a floor
+// level if something is built on top of them — this prevents a ceiling/roof cap
+// (a floor piece placed as the top of a single-story build) from being counted
+// as a second story.
+//
+// Rounds to 0.1 m to absorb float drift from snap placement.
+export function detectFloorLevels(
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): number[] {
+  const OCCUPY_TOLERANCE = 0.15
+  const seen = new Map<number, true>()
+
+  for (const piece of pieces) {
+    const part = partsById[piece.partId]
+    if (!part) continue
+
+    const topY = Math.round((piece.position[1] + part.dimensions.h / 2) * 10) / 10
+
+    if (part.category === 'foundation') {
+      // Foundations always mark a floor level — they're the structural base.
+      seen.set(topY, true)
+    } else if (part.category === 'floor') {
+      // Only count as a floor if something is resting on top of this piece.
+      // A floor piece with nothing above it is a ceiling/roof cap, not a walkable story.
+      const hasOccupants = pieces.some((other) => {
+        if (other.uuid === piece.uuid) return false
+        const otherPart = partsById[other.partId]
+        if (!otherPart) return false
+        const otherBottomY =
+          Math.round((other.position[1] - otherPart.dimensions.h / 2) * 10) / 10
+        return Math.abs(otherBottomY - topY) < OCCUPY_TOLERANCE
+      })
+      if (hasOccupants) seen.set(topY, true)
+    }
+  }
+
+  const levels = [...seen.keys()].sort((a, b) => a - b)
+  return levels.length > 0 ? levels : [0]
+}
+
+// Computes the axis-aligned XZ bounding box of the build's floor footprint.
+// Uses foundation/floor pieces; falls back to all pieces if none are present.
+// Returns null for an empty build. Used by CameraController to keep the camera
+// inside the structure in interior mode.
+export function computeBuildBounds(
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const floors = pieces.filter((p) => {
+    const part = partsById[p.partId]
+    return part && (part.category === 'foundation' || part.category === 'floor')
+  })
+  const source = floors.length > 0 ? floors : pieces
+  if (source.length === 0) return null
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+  for (const piece of source) {
+    const part = partsById[piece.partId]
+    if (!part) continue
+    minX = Math.min(minX, piece.position[0] - part.dimensions.w / 2)
+    maxX = Math.max(maxX, piece.position[0] + part.dimensions.w / 2)
+    minZ = Math.min(minZ, piece.position[2] - part.dimensions.d / 2)
+    maxZ = Math.max(maxZ, piece.position[2] + part.dimensions.d / 2)
+  }
+  return { minX, maxX, minZ, maxZ }
+}
+
+// Returns the top-surface Y of the highest piece in the build (the ceiling).
+// Used by CameraController to clamp vertical movement in interior mode.
+// Returns null for an empty build.
+export function computeBuildCeiling(
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): number | null {
+  let max: number | null = null
+  for (const piece of pieces) {
+    const part = partsById[piece.partId]
+    if (!part) continue
+    const topY = piece.position[1] + part.dimensions.h / 2
+    if (max === null || topY > max) max = topY
+  }
+  return max
+}
+
 // Returns true if `point` is within the XZ footprint of `piece`, accounting
-// for the piece's yaw rotation.
+// for the piece's yaw rotation. Uses a small epsilon so that points landing
+// exactly on a piece's boundary count as inside — without this, probes at
+// coordinates like x=2 (foundation edge) miss adjacent walls at x=2.0 because
+// e.g. (2 - 1.9) in JS = 0.10000000000000009 > 0.1.
 export function isPointInsideFootprint(
   point: Vec3,
   piece: PlacedPiece,
   part: PartDef
 ): boolean {
+  const EPSILON = 1e-6
   const dx = point[0] - piece.position[0]
   const dz = point[2] - piece.position[2]
   const yaw = -piece.rotation[1]
@@ -214,8 +349,8 @@ export function isPointInsideFootprint(
   const localX = dx * cos + dz * sin
   const localZ = -dx * sin + dz * cos
   return (
-    Math.abs(localX) <= part.dimensions.w / 2 &&
-    Math.abs(localZ) <= part.dimensions.d / 2
+    Math.abs(localX) <= part.dimensions.w / 2 + EPSILON &&
+    Math.abs(localZ) <= part.dimensions.d / 2 + EPSILON
   )
 }
 
@@ -265,21 +400,37 @@ export function rankCandidatesByCoverage(
   partsById: Record<string, PartDef>
 ): SnapCandidate[] {
   if (candidates.length <= 1 || pieces.length === 0) return candidates
-  const { w, d } = ghostPart.dimensions
+  const { w, h, d } = ghostPart.dimensions
+  const Y_EPSILON = 0.05 // tolerate small float drift when comparing tops
+  const localCorners: Vec3[] = [
+    [-w / 2, 0, -d / 2],
+    [w / 2, 0, -d / 2],
+    [-w / 2, 0, d / 2],
+    [w / 2, 0, d / 2],
+    [0, 0, 0],
+  ]
   const scored = candidates.map((c) => {
     const pos = computeSnapPosition(ghostPart, c)
-    const probes: Vec3[] = [
-      [pos[0] - w / 2, 0, pos[2] - d / 2],
-      [pos[0] + w / 2, 0, pos[2] - d / 2],
-      [pos[0] - w / 2, 0, pos[2] + d / 2],
-      [pos[0] + w / 2, 0, pos[2] + d / 2],
-      [pos[0], 0, pos[2]],
-    ]
+    const ghostBottom = pos[1] - h / 2
+    // Probes must reflect the candidate's snap rotation — otherwise asymmetric
+    // ghosts (e.g. a 4×0.2 wall) under-count coverage when the snap rotates
+    // them 90°, making coverage scores inconsistent across edges of a box.
+    const yaw = computeSnapRotation(c)[1]
+    const probes: Vec3[] = localCorners.map((lc) => {
+      const r = rotateY(lc, yaw)
+      return [pos[0] + r[0], 0, pos[2] + r[2]]
+    })
     const covered = new Set<string>()
     for (const piece of pieces) {
       if (piece.uuid === c.worldAnchor.pieceUuid) continue
       const part = partsById[piece.partId]
       if (!part) continue
+      // Only count pieces that sit AT OR BELOW the ghost — pieces above the
+      // ghost don't count as "coverage" (they'd cause stack-on-wall candidates
+      // to falsely outscore the floor-edge candidate when placing a 2nd-story
+      // wall under an existing floor).
+      const pieceTop = piece.position[1] + part.dimensions.h / 2
+      if (pieceTop > ghostBottom + Y_EPSILON) continue
       for (const p of probes) {
         if (isPointInsideFootprint(p, piece, part)) {
           covered.add(piece.uuid)

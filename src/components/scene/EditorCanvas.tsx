@@ -188,7 +188,10 @@ export default function EditorCanvas() {
       />
       <Pieces />
       <GhostPiece cursorRef={cursorRef} ghostPoseRef={ghostPoseRef} />
-      <OrbitControls makeDefault enableZoom={!selectedPartId} />
+      <OrbitControls
+        makeDefault
+        enableZoom={!selectedPartId}
+      />
       <CameraController />
       {import.meta.env.DEV && <Stats />}
     </Canvas>

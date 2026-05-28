@@ -145,11 +145,13 @@ function mkCandidate(args: {
   slideOffset?: -1 | 0 | 1
   worldSlideAxis?: Vec3 | null
   pieceRotation?: Vec3
+  pieceDimensions?: { w: number; h: number; d: number }
 }) {
   return {
     worldAnchor: {
       pieceUuid: 't1',
       pieceRotation: args.pieceRotation ?? ([0, 0, 0] as Vec3),
+      pieceDimensions: args.pieceDimensions ?? { w: 4, h: 3, d: 0.2 },
       anchor: {
         id: 'test',
         position: [0, 0, 0] as Vec3,
@@ -174,10 +176,11 @@ describe('computeSnapPosition', () => {
     expect(computeSnapPosition(wall, c)).toEqual([3, 0.2 + 1.5, 5])
   })
 
-  it('edge surface: centers ghost on edge line and lifts by half height', () => {
-    const wall = getPart('large-wall')! // h = 3
+  it('edge surface: insets ghost inward by d/2 (outer face flush with edge) and lifts by h/2', () => {
+    const wall = getPart('large-wall')! // h=3, d=0.2
     const c = mkCandidate({ surface: 'edge', worldPosition: [2, 0.1, 0], worldNormal: [1, 0, 0] })
-    expect(computeSnapPosition(wall, c)).toEqual([2, 0.1 + 1.5, 0])
+    // Inset by wall.d/2 = 0.1 opposite the normal; lifted by h/2 = 1.5
+    expect(computeSnapPosition(wall, c)).toEqual([2 - 0.1, 0.1 + 1.5, 0])
   })
 
   it('side surface: pushes ghost out along the anchor normal by half its depth', () => {
@@ -226,66 +229,76 @@ describe('slide axis expansion', () => {
     expect(top[0].slideOffset).toBe(0)
   })
 
-  it('slide candidate worldPosition is offset along the rotated slide axis', () => {
+  it('slide candidate worldPosition is offset by (ghost.d - host.d)/2 along the rotated slide axis', () => {
     // East wall (rotated 90° around Y). Local slideAxis [0,0,1] → world [1,0,0]
     // after rotation (rotateY([0,0,1], π/2) = [1, 0, 0]).
     const wall: PlacedPiece = {
       uuid: 'w-east',
-      partId: 'large-wall',
+      partId: 'large-wall', // d=0.2
       position: [2, 1.8, 0],
       rotation: [0, Math.PI / 2, 0],
       tier: 'frame',
       layer: 'exterior',
     }
     const anchors = computeAllWorldAnchors([wall], PARTS_BY_ID)
-    const floor = getPart('large-floor')! // d = 4 → shift = 2
+    const floor = getPart('large-floor')! // d=4. shift = (4 - 0.2) / 2 = 1.9
     const candidates = findSnapCandidates('floor', [2, 3.3, 0], anchors, 5, floor)
     const top = candidates.filter((c) => c.worldAnchor.anchor.surface === 'top')
     const minus = top.find((c) => c.slideOffset === -1)!
     const zero = top.find((c) => c.slideOffset === 0)!
     const plus = top.find((c) => c.slideOffset === 1)!
-    // The wall top anchor is at world position approximately (2, wall_top, 0)
     expect(zero.worldPosition[0]).toBeCloseTo(2)
-    // Slid by ghost.d/2 = 2 along +X (one direction places roof over box, the other away)
-    expect(plus.worldPosition[0]).toBeCloseTo(4)
-    expect(minus.worldPosition[0]).toBeCloseTo(0)
-    // The -1 candidate landing at x=0 means roof centered over a box with east wall at x=2 ✓
+    expect(plus.worldPosition[0]).toBeCloseTo(2 + 1.9)
+    expect(minus.worldPosition[0]).toBeCloseTo(2 - 1.9)
+    // slide=-1 aligns the roof's outer edge with the wall's outer face — so
+    // when walls are INSET (their outer face = foundation edge), the roof
+    // covers the foundation perfectly. See the box-centering test below.
   })
 
   it('snapped position centers a roof over a 4-wall box (the user-reported scenario)', () => {
-    // Build: foundation centered at origin, 4 walls on its edges, hover a roof
-    // near the east wall and pick the slide=-1 candidate → roof centered at origin.
+    // Build: foundation centered at origin, 4 walls placed via the realistic
+    // edge-snap path (inset by wall.d/2 = 0.1 from the foundation edge). Hover
+    // a roof near the east wall and pick the slide=-1 candidate → roof centered
+    // at origin and covering the entire foundation footprint.
     const wallH = 3
     const foundationY = 0.15
     const wallCenterY = foundationY + 0.15 + wallH / 2 // 1.8
-    const mkWall = (x: number, z: number, yaw: number): PlacedPiece => ({
-      uuid: `w-${x}-${z}`,
+    const wallInset = 0.1 // wall.d/2 — outer face flush with foundation edge
+    const mkWall = (xSign: number, zSign: number, yaw: number, uuid: string): PlacedPiece => ({
+      uuid,
       partId: 'large-wall',
-      position: [x, wallCenterY, z],
+      // Walls inset toward the box center; xSign/zSign in {-1, 0, 1}
+      position: [xSign * (2 - wallInset), wallCenterY, zSign * (2 - wallInset)],
       rotation: [0, yaw, 0],
       tier: 'frame',
       layer: 'exterior',
     })
     const walls = [
-      mkWall(2, 0, Math.PI / 2),
-      mkWall(-2, 0, Math.PI / 2),
-      mkWall(0, 2, 0),
-      mkWall(0, -2, 0),
+      mkWall(1, 0, Math.PI / 2, 'w-east'),
+      mkWall(-1, 0, Math.PI / 2, 'w-west'),
+      mkWall(0, 1, 0, 'w-north'),
+      mkWall(0, -1, 0, 'w-south'),
     ]
     const anchors = computeAllWorldAnchors(walls, PARTS_BY_ID)
     const floor = getPart('large-floor')! // d=4
     // Cursor near east wall top
-    const candidates = findSnapCandidates('floor', [2, wallCenterY + wallH / 2, 0], anchors, 5, floor)
-    // Find the candidate for the east wall with the slide that puts the roof at x≈0
+    const candidates = findSnapCandidates(
+      'floor',
+      [2, wallCenterY + wallH / 2, 0],
+      anchors,
+      5,
+      floor
+    )
+    // Find the east-wall candidate whose snapped position centers at origin
     const east = candidates.filter(
-      (c) => c.worldAnchor.pieceUuid === 'w-2-0' && c.worldAnchor.anchor.surface === 'top'
+      (c) => c.worldAnchor.pieceUuid === 'w-east' && c.worldAnchor.anchor.surface === 'top'
     )
     const centered = east.find((c) => Math.abs(c.worldPosition[0]) < 0.01)
     expect(centered).toBeDefined()
     const placement = computeSnapPosition(floor, centered!)
     expect(placement[0]).toBeCloseTo(0)
     expect(placement[2]).toBeCloseTo(0)
-    // Y = wall top + roof half-height
+    // Y = wall top + roof half-height (floor h=0.2)
     expect(placement[1]).toBeCloseTo(wallCenterY + wallH / 2 + 0.1)
   })
 })
@@ -429,24 +442,25 @@ describe('computeSnapRotation', () => {
 })
 
 describe('rankCandidatesByCoverage', () => {
-  // Build the user-reported scenario: 4-wall box on a foundation. Hover a roof
-  // near one wall and expect the 'centered over the box' candidate to win
-  // without scrolling.
+  // Build the user-reported scenario: 4-wall box on a foundation. Walls sit
+  // inset (outer face flush with foundation edge), matching the real
+  // edge-snap placement output.
   const wallH = 3
   const wallCenterY = 0.15 + 0.15 + wallH / 2 // 1.8
-  const mkWall = (x: number, z: number, yaw: number, uuid: string): PlacedPiece => ({
+  const wallInset = 0.1 // large-wall.d / 2
+  const mkWall = (xSign: number, zSign: number, yaw: number, uuid: string): PlacedPiece => ({
     uuid,
     partId: 'large-wall',
-    position: [x, wallCenterY, z],
+    position: [xSign * (2 - wallInset), wallCenterY, zSign * (2 - wallInset)],
     rotation: [0, yaw, 0],
     tier: 'frame',
     layer: 'exterior',
   })
   const walls: PlacedPiece[] = [
-    mkWall(2, 0, Math.PI / 2, 'w-east'),
-    mkWall(-2, 0, Math.PI / 2, 'w-west'),
-    mkWall(0, 2, 0, 'w-north'),
-    mkWall(0, -2, 0, 'w-south'),
+    mkWall(1, 0, Math.PI / 2, 'w-east'),
+    mkWall(-1, 0, Math.PI / 2, 'w-west'),
+    mkWall(0, 1, 0, 'w-north'),
+    mkWall(0, -1, 0, 'w-south'),
   ]
 
   it('ranks the centered-over-box candidate first when hovering near a single wall', () => {
@@ -482,6 +496,43 @@ describe('rankCandidatesByCoverage', () => {
     const cursor: Vec3 = [2, wallCenterY + wallH / 2, 0]
     const raw = findSnapCandidates('floor', cursor, anchors, 5, floor)
     expect(rankCandidatesByCoverage(raw, floor, [], PARTS_BY_ID)).toEqual(raw)
+  })
+
+  it('does not count pieces ABOVE the ghost as coverage (regression — 2nd-story wall placement)', () => {
+    // Scene: foundation + 4 first-story walls + second-story floor on top.
+    // User wants to place a wall on the second-story floor edge. The first-
+    // story wall-top candidate would put the new wall at y=4.8 (bottom 3.3 —
+    // BELOW the second-story floor top at 3.5). The floor-edge candidate puts
+    // it at y=5.0 (bottom 3.5 = floor top, correct). Before the Y filter,
+    // the wall-top candidate falsely won because it "covered" the floor above it.
+    const foundation: PlacedPiece = {
+      uuid: 'fdn',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const secondFloor: PlacedPiece = {
+      uuid: 'fl-2',
+      partId: 'large-floor',
+      position: [0, 3.4, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const scene = [foundation, ...walls, secondFloor]
+    const wallPart = getPart('large-wall')!
+    const anchors = computeAllWorldAnchors(scene, PARTS_BY_ID)
+    // Cursor positioned over the second-story floor's east edge
+    const cursor: Vec3 = [2, 3.5, 0]
+    const raw = findSnapCandidates('wall', cursor, anchors, 3, wallPart)
+    const ranked = rankCandidatesByCoverage(raw, wallPart, scene, PARTS_BY_ID)
+    expect(ranked.length).toBeGreaterThan(0)
+    // The winning candidate must be the second-story floor's east edge,
+    // not a first-story wall top.
+    expect(ranked[0].worldAnchor.pieceUuid).toBe('fl-2')
+    expect(ranked[0].worldAnchor.anchor.id).toBe('edge-px')
   })
 })
 
