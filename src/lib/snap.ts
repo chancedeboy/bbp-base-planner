@@ -9,6 +9,10 @@ export type Vec3 = [number, number, number]
 
 export interface WorldAnchor {
   pieceUuid: string
+  // Host piece's rotation — used by computeSnapRotation so a ghost stacking
+  // onto a 'top' or 'bottom' anchor inherits the host's yaw (keeps a wall
+  // stacked on a 90°-rotated wall from landing perpendicular).
+  pieceRotation: Vec3
   anchor: SnapAnchor
   worldPosition: Vec3
   worldNormal: Vec3
@@ -69,6 +73,7 @@ export function computeWorldAnchorsForPiece(
   return part.snapAnchors.map((anchor) => {
     return {
       pieceUuid: piece.uuid,
+      pieceRotation: piece.rotation,
       anchor,
       worldPosition: addVec(piece.position, rotateY(anchor.position, yaw)),
       worldNormal: rotateY(anchor.normal, yaw),
@@ -219,6 +224,10 @@ export function computeElevation(
 // Compute a snapped yaw that aligns the ghost's primary face with the candidate's
 // normal. For 'edge' and 'side' anchors, walls should face perpendicular to the
 // anchor normal (i.e., the wall's broad face matches the normal direction).
+// For 'top' and 'bottom' anchors, the horizontal normal is degenerate — the
+// ghost inherits the host's rotation so stacked pieces stay aligned with the
+// piece below them (a second-story wall lands parallel to its host, not
+// perpendicular).
 export function computeSnapRotation(candidate: SnapCandidate): Vec3 {
   const surface = candidate.worldAnchor.anchor.surface
   const normal = candidate.worldAnchor.worldNormal
@@ -226,5 +235,5 @@ export function computeSnapRotation(candidate: SnapCandidate): Vec3 {
     const yaw = Math.atan2(normal[0], normal[2])
     return [0, yaw, 0]
   }
-  return [0, 0, 0]
+  return candidate.worldAnchor.pieceRotation
 }

@@ -141,10 +141,12 @@ function mkCandidate(args: {
   worldNormal: Vec3
   slideOffset?: -1 | 0 | 1
   worldSlideAxis?: Vec3 | null
+  pieceRotation?: Vec3
 }) {
   return {
     worldAnchor: {
       pieceUuid: 't1',
+      pieceRotation: args.pieceRotation ?? ([0, 0, 0] as Vec3),
       anchor: {
         id: 'test',
         position: [0, 0, 0] as Vec3,
@@ -394,9 +396,63 @@ describe('computeSnapRotation', () => {
     expect(computeSnapRotation(c)[1]).toBeCloseTo(0)
   })
 
-  it('returns identity for top surface', () => {
+  it('returns identity for top surface when host is unrotated', () => {
     const c = mkCandidate({ surface: 'top', worldPosition: [0, 0, 0], worldNormal: [0, 1, 0] })
     expect(computeSnapRotation(c)).toEqual([0, 0, 0])
+  })
+
+  it('inherits host rotation for top surface (regression — second-story walls)', () => {
+    // Host wall placed on the east edge of a foundation has yaw π/2. A wall
+    // ghost stacking on top should inherit π/2 so it lands parallel to the
+    // host, not perpendicular.
+    const c = mkCandidate({
+      surface: 'top',
+      worldPosition: [2, 3.3, 0],
+      worldNormal: [0, 1, 0],
+      pieceRotation: [0, Math.PI / 2, 0],
+    })
+    expect(computeSnapRotation(c)).toEqual([0, Math.PI / 2, 0])
+  })
+
+  it('inherits host rotation for bottom surface (wall hanging below)', () => {
+    const c = mkCandidate({
+      surface: 'bottom',
+      worldPosition: [0, 0, 0],
+      worldNormal: [0, -1, 0],
+      pieceRotation: [0, Math.PI, 0],
+    })
+    expect(computeSnapRotation(c)).toEqual([0, Math.PI, 0])
+  })
+})
+
+describe('second-story wall stacking (end-to-end)', () => {
+  it('a wall snapped to another wall’s top inherits the host yaw and lands flush above it', () => {
+    // Host wall: standing on the east edge of a foundation (yaw π/2).
+    // Foundation top = 0.3, wall h = 3 → wall center y = 1.8, top = 3.3.
+    const host: PlacedPiece = {
+      uuid: 'w-east',
+      partId: 'large-wall',
+      position: [2, 1.8, 0],
+      rotation: [0, Math.PI / 2, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const wallPart = getPart('large-wall')!
+    const anchors = computeAllWorldAnchors([host], PARTS_BY_ID)
+    // Cursor near the host wall's top
+    const candidates = findSnapCandidates('wall', [2, 3.3, 0], anchors, 3, wallPart)
+    const topCandidate = candidates.find((c) => c.worldAnchor.anchor.surface === 'top')
+    expect(topCandidate).toBeDefined()
+
+    const pos = computeSnapPosition(wallPart, topCandidate!)
+    const rot = computeSnapRotation(topCandidate!)
+
+    // Stacks directly above: center y = host_top + ghost.h/2 = 3.3 + 1.5 = 4.8
+    expect(pos[0]).toBeCloseTo(2)
+    expect(pos[1]).toBeCloseTo(4.8)
+    expect(pos[2]).toBeCloseTo(0)
+    // Inherits host yaw — second-story wall is PARALLEL to host, not perpendicular
+    expect(rot[1]).toBeCloseTo(Math.PI / 2)
   })
 })
 
