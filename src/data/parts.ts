@@ -249,8 +249,8 @@ export const PARTS: PartDef[] = [
     id: 'large-door',
     name: 'Large Door',
     category: 'door',
-    dimensions: { w: 1.2, h: 2.5, d: 0.2 },
-    snapAnchors: [],
+    dimensions: { w: 4, h: 3, d: 0.2 },
+    snapAnchors: wallAnchors(4, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 5 } },
       t1: { resources: { nails: 10, planks: 5 }, cumulative: true },
@@ -269,8 +269,8 @@ export const PARTS: PartDef[] = [
     id: 'small-door',
     name: 'Small Door',
     category: 'door',
-    dimensions: { w: 1, h: 2.2, d: 0.2 },
-    snapAnchors: [],
+    dimensions: { w: 2, h: 3, d: 0.2 },
+    snapAnchors: wallAnchors(2, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 3 } },
       t1: { resources: { nails: 10, planks: 5 }, cumulative: true },
@@ -292,7 +292,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Gate (R/L)',
     category: 'gate',
     dimensions: { w: 4, h: 3, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(4, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 4 } },
       t1: { resources: { nails: 24, planks: 16 }, cumulative: true },
@@ -307,8 +307,8 @@ export const PARTS: PartDef[] = [
     id: 'single-garage-door',
     name: 'Single Garage Door',
     category: 'gate',
-    dimensions: { w: 3, h: 3, d: 0.2 },
-    snapAnchors: [],
+    dimensions: { w: 4, h: 3, d: 0.2 },
+    snapAnchors: wallAnchors(4, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 4 } },
       t1: { resources: { nails: 24, planks: 16 }, cumulative: true },
@@ -323,8 +323,8 @@ export const PARTS: PartDef[] = [
     id: 'double-garage-door',
     name: 'Double Garage Door',
     category: 'gate',
-    dimensions: { w: 5, h: 3, d: 0.2 },
-    snapAnchors: [],
+    dimensions: { w: 8, h: 3, d: 0.2 },
+    snapAnchors: wallAnchors(8, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 4 } },
       t1: { resources: { nails: 24, planks: 16 }, cumulative: true, notes: '×2 doors total' },
@@ -440,7 +440,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Window',
     category: 'window',
     dimensions: { w: 4, h: 3, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(4, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 5 } },
       t1: { resources: { nails: 10, logs: 2 }, cumulative: true, notes: 'or 8 planks' },
@@ -456,7 +456,7 @@ export const PARTS: PartDef[] = [
     name: 'Small Window',
     category: 'window',
     dimensions: { w: 2, h: 3, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(2, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 3 } },
       t1: { resources: { nails: 10, logs: 1 }, cumulative: true, notes: 'or 3 planks' },
