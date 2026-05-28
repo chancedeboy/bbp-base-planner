@@ -144,6 +144,62 @@ export function computeSnapPosition(
   return a
 }
 
+// Returns true if `point` is within the XZ footprint of `piece`, accounting
+// for the piece's yaw rotation.
+export function isPointInsideFootprint(
+  point: Vec3,
+  piece: PlacedPiece,
+  part: PartDef
+): boolean {
+  const dx = point[0] - piece.position[0]
+  const dz = point[2] - piece.position[2]
+  const yaw = -piece.rotation[1]
+  const cos = Math.cos(yaw)
+  const sin = Math.sin(yaw)
+  const localX = dx * cos + dz * sin
+  const localZ = -dx * sin + dz * cos
+  return (
+    Math.abs(localX) <= part.dimensions.w / 2 &&
+    Math.abs(localZ) <= part.dimensions.d / 2
+  )
+}
+
+// Computes the elevation (top-surface Y) of whatever the ghost is over.
+// Probes the ghost's footprint corners + center against every placed piece;
+// the highest matching piece's top wins. Returns 0 if nothing is underneath.
+//
+// This is what makes "drag a roof over the box" work — the ghost auto-lifts
+// to wall-top height because the floor's 4 corners land on the 4 walls.
+export function computeElevation(
+  cursor: Vec3,
+  ghostPart: PartDef,
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): number {
+  const { w, d } = ghostPart.dimensions
+  const probes: Vec3[] = [
+    [cursor[0] - w / 2, 0, cursor[2] - d / 2],
+    [cursor[0] + w / 2, 0, cursor[2] - d / 2],
+    [cursor[0] - w / 2, 0, cursor[2] + d / 2],
+    [cursor[0] + w / 2, 0, cursor[2] + d / 2],
+    [cursor[0], 0, cursor[2]],
+  ]
+  let maxTop = 0
+  for (const piece of pieces) {
+    const part = partsById[piece.partId]
+    if (!part) continue
+    const top = piece.position[1] + part.dimensions.h / 2
+    if (top <= maxTop) continue // can't raise us
+    for (const p of probes) {
+      if (isPointInsideFootprint(p, piece, part)) {
+        maxTop = top
+        break
+      }
+    }
+  }
+  return maxTop
+}
+
 // Compute a snapped yaw that aligns the ghost's primary face with the candidate's
 // normal. For 'edge' and 'side' anchors, walls should face perpendicular to the
 // anchor normal (i.e., the wall's broad face matches the normal direction).

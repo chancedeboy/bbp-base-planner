@@ -8,6 +8,8 @@ import {
   findSnapCandidates,
   computeSnapPosition,
   computeSnapRotation,
+  computeElevation,
+  isPointInsideFootprint,
   type Vec3,
 } from '../lib/snap'
 import { PARTS_BY_ID, getPart } from '../data/parts'
@@ -182,6 +184,108 @@ describe('computeSnapPosition', () => {
       worldNormal: [1, 0, 0] as Vec3,
     }
     expect(computeSnapPosition(wall, candidate)).toEqual([2 + 0.1, 1.5, 0])
+  })
+})
+
+describe('isPointInsideFootprint', () => {
+  it('returns true for point inside an unrotated piece', () => {
+    const foundation = getPart('foundation-triangle')!
+    const piece: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    // Foundation is 4x4; (1.5, _, 1.5) is inside
+    expect(isPointInsideFootprint([1.5, 0, 1.5], piece, foundation)).toBe(true)
+    // (3, _, 3) is outside
+    expect(isPointInsideFootprint([3, 0, 3], piece, foundation)).toBe(false)
+  })
+
+  it('respects yaw rotation', () => {
+    const wall = getPart('large-wall')! // 4 wide × 0.2 deep
+    const piece: PlacedPiece = {
+      uuid: 'w1',
+      partId: 'large-wall',
+      position: [0, 1.65, 0],
+      rotation: [0, Math.PI / 2, 0], // rotated 90° → now 0.2 wide × 4 deep in world
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    // After rotation, the wall extends along Z. (0, _, 1.5) should be inside.
+    expect(isPointInsideFootprint([0, 0, 1.5], piece, wall)).toBe(true)
+    // (1.5, _, 0) should be outside (was inside before rotation)
+    expect(isPointInsideFootprint([1.5, 0, 0], piece, wall)).toBe(false)
+  })
+})
+
+describe('computeElevation', () => {
+  it('returns 0 when no pieces are underneath the ghost', () => {
+    const wall = getPart('large-wall')!
+    expect(computeElevation([10, 0, 10], wall, [], PARTS_BY_ID)).toBe(0)
+  })
+
+  it('returns foundation top when ghost hovers over a foundation', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0], // h=0.3, sitting on ground
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const wall = getPart('large-wall')!
+    // Ghost wall centered at origin, over the foundation
+    expect(computeElevation([0, 0, 0], wall, [foundation], PARTS_BY_ID)).toBeCloseTo(0.3)
+  })
+
+  it('returns wall-top when a roof ghost spans a 4-wall box', () => {
+    // 4 walls forming a 4×4 box on a foundation. Walls placed at foundation
+    // edges, top at y = 0.3 + 3 = 3.3 (wall center 1.8, half-height 1.5).
+    const wallH = 3
+    const wallCenterY = 0.15 + 0.15 + wallH / 2 // foundation top 0.3 + wall h/2
+    const mkWall = (x: number, z: number, yaw: number): PlacedPiece => ({
+      uuid: `w-${x}-${z}`,
+      partId: 'large-wall',
+      position: [x, wallCenterY, z],
+      rotation: [0, yaw, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    })
+    const walls = [
+      mkWall(2, 0, 0),                  // east wall
+      mkWall(-2, 0, 0),                 // west wall
+      mkWall(0, 2, Math.PI / 2),        // north wall
+      mkWall(0, -2, Math.PI / 2),       // south wall
+    ]
+    const floorGhost = getPart('large-floor')! // 4×0.2×4
+    // Ghost centered over the box — its 4 corners should land on the 4 walls
+    const elev = computeElevation([0, 0, 0], floorGhost, walls, PARTS_BY_ID)
+    expect(elev).toBeCloseTo(wallCenterY + wallH / 2) // wall top
+  })
+
+  it('picks the highest top when stacked pieces overlap', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const floor: PlacedPiece = {
+      uuid: 'fl1',
+      partId: 'large-floor',
+      position: [0, 0.4, 0], // sitting above foundation
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const wall = getPart('large-wall')!
+    // Foundation top = 0.3, floor top = 0.5 — floor wins
+    expect(computeElevation([0, 0, 0], wall, [foundation, floor], PARTS_BY_ID)).toBeCloseTo(0.5)
   })
 })
 

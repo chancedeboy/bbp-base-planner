@@ -5,6 +5,7 @@ import { CATEGORY_COLORS, PARTS_BY_ID, getPart } from '../../data/parts'
 import { useBuildStore } from '../../state/useBuildStore'
 import {
   computeAllWorldAnchors,
+  computeElevation,
   computeSnapPosition,
   computeSnapRotation,
   findSnapCandidates,
@@ -64,13 +65,15 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
           rotation = computeSnapRotation(candidate)
         }
       } else {
-        // No candidate in range — float at cursor, ground-aligned
-        position = [cursorVec[0], part.dimensions.h / 2, cursorVec[2]]
+        // No anchor in range — float at cursor, elevated over what's beneath
+        const elevation = computeElevation(cursorVec, part, pieces, PARTS_BY_ID)
+        position = [cursorVec[0], elevation + part.dimensions.h / 2, cursorVec[2]]
       }
     } else {
-      // Free mode: 0.25m grid
+      // Free mode: 0.25m grid + elevation over placed pieces
       const snapped = gridSnapPoint(cursorVec, 0.25)
-      position = [snapped[0], part.dimensions.h / 2, snapped[2]]
+      const elevation = computeElevation(snapped, part, pieces, PARTS_BY_ID)
+      position = [snapped[0], elevation + part.dimensions.h / 2, snapped[2]]
     }
 
     mesh.position.set(position[0], position[1], position[2])
