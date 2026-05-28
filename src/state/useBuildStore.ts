@@ -34,6 +34,7 @@ interface BuildStoreActions {
   removePiece: (uuid: string) => void
   selectPiece: (uuid: string | null) => void
   upgradeTier: (uuid: string, tier: Tier) => void
+  setPieceRotation: (uuid: string, rotation: [number, number, number]) => void
   toggleSnap: () => void
   setMode: (mode: 'exterior' | 'interior') => void
   setServerConfig: (cfg: Partial<ServerConfig>) => void
@@ -107,6 +108,14 @@ export const useBuildStore = create<BuildStore>()(
           }),
           false,
           'upgradeTier'
+        ),
+      setPieceRotation: (uuid, rotation) =>
+        set(
+          (s) => ({
+            pieces: s.pieces.map((p) => (p.uuid === uuid ? { ...p, rotation } : p)),
+          }),
+          false,
+          'setPieceRotation'
         ),
       toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled }), false, 'toggleSnap'),
       setMode: (mode) => set({ mode }, false, 'setMode'),

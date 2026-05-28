@@ -16,20 +16,29 @@ interface BuildPadProps {
 function BuildPad({ cursorRef, ghostPoseRef }: BuildPadProps) {
   const placePiece = useBuildStore((s) => s.placePiece)
   const selectedPartId = useBuildStore((s) => s.selectedPartId)
+  const selectedPieceId = useBuildStore((s) => s.selectedPieceId)
+  const selectPiece = useBuildStore((s) => s.selectPiece)
 
   const handleMove = (e: ThreeEvent<PointerEvent>) => {
     cursorRef.current = e.point.clone()
   }
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    if (!selectedPartId) return
-    e.stopPropagation()
-    const pose = ghostPoseRef.current
-    if (pose) {
-      placePiece(selectedPartId, pose.position, pose.rotation)
-    } else {
-      const { x, z } = e.point
-      placePiece(selectedPartId, [x, 0, z])
+    if (selectedPartId) {
+      e.stopPropagation()
+      const pose = ghostPoseRef.current
+      if (pose) {
+        placePiece(selectedPartId, pose.position, pose.rotation)
+      } else {
+        const { x, z } = e.point
+        placePiece(selectedPartId, [x, 0, z])
+      }
+      return
+    }
+    // Empty-ground click with no part held → deselect any selected piece
+    if (selectedPieceId) {
+      e.stopPropagation()
+      selectPiece(null)
     }
   }
 
@@ -64,20 +73,21 @@ export default function EditorCanvas() {
 
   const selectedPartId = useBuildStore((s) => s.selectedPartId)
   const selectPart = useBuildStore((s) => s.selectPart)
+  const selectPiece = useBuildStore((s) => s.selectPiece)
   const rotateGhost = useBuildStore((s) => s.rotateGhost)
   const rotationStep = useBuildStore((s) => s.serverConfig.rotationStep)
   const cycleSnapCandidate = useBuildStore((s) => s.cycleSnapCandidate)
   const snapEnabled = useBuildStore((s) => s.snapEnabled)
 
-  // Keyboard: ESC cancels; R / Shift+R rotate the ghost.
+  // Keyboard: ESC clears selection (part or placed piece); R / Shift+R rotate the ghost.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         selectPart(null)
+        selectPiece(null)
         return
       }
       if (!selectedPartId) return
-      // Don't intercept when typing in an input/textarea
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
 
@@ -89,7 +99,7 @@ export default function EditorCanvas() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedPartId, rotationStep, rotateGhost, selectPart])
+  }, [selectedPartId, rotationStep, rotateGhost, selectPart, selectPiece])
 
   // Mouse wheel cycles snap candidates while a part is selected & snap is on.
   // When no part is selected, wheel passes through to OrbitControls (zoom).

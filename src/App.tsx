@@ -2,6 +2,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import MobileSplash from './components/MobileSplash'
 import TopBar from './components/ui/TopBar'
 import PartsPalette from './components/ui/PartsPalette'
+import Inspector from './components/ui/Inspector'
 import EditorCanvas from './components/scene/EditorCanvas'
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
           <div className="flex-1 relative">
             <EditorCanvas />
           </div>
+          <Inspector />
         </div>
       </div>
     </ErrorBoundary>

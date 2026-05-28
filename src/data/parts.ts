@@ -675,3 +675,14 @@ export const CATEGORY_COLORS: Record<PartDef['category'], string> = {
   metal: '#475569',
   utility: '#7c3aed',
 }
+
+// Tier colors override category colors on placed pieces so users can read
+// build progress at a glance: raw wood → tan → metal grey → concrete grey.
+// Category info still appears in the palette + Inspector.
+import type { Tier } from './types'
+export const TIER_COLORS: Record<Tier, string> = {
+  frame: '#c0a987',  // pale wood frame
+  t1: '#d2b48c',     // tan (wood)
+  t2: '#9ca3af',     // grey (metal)
+  t3: '#4b5563',     // dark grey (concrete)
+}
