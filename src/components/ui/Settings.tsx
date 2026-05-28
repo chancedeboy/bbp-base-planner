@@ -62,6 +62,13 @@ export default function Settings({ onClose }: Props) {
         <section className="mt-6 text-xs text-gray-500">
           <p className="mb-1">Keyboard shortcuts:</p>
           <ul className="space-y-0.5 ml-3 list-disc">
+            <li>
+              <kbd className="text-gray-300">W</kbd>{' '}
+              <kbd className="text-gray-300">A</kbd>{' '}
+              <kbd className="text-gray-300">S</kbd>{' '}
+              <kbd className="text-gray-300">D</kbd> — move camera
+              (Shift = sprint)
+            </li>
             <li><kbd className="text-gray-300">R</kbd> — rotate ghost 90°</li>
             <li>
               <kbd className="text-gray-300">Shift+R</kbd> — rotate by

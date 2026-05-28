@@ -5,6 +5,7 @@ import { Vector3 } from 'three'
 import { useBuildStore } from '../../state/useBuildStore'
 import Piece from './Piece'
 import GhostPiece from './GhostPiece'
+import CameraController from './CameraController'
 import type { Vec3 } from '../../lib/snap'
 
 interface BuildPadProps {
@@ -128,6 +129,7 @@ export default function EditorCanvas() {
       <Pieces />
       <GhostPiece cursorRef={cursorRef} ghostPoseRef={ghostPoseRef} />
       <OrbitControls makeDefault enableZoom={!selectedPartId} />
+      <CameraController />
       {import.meta.env.DEV && <Stats />}
     </Canvas>
   )
