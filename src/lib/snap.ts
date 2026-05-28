@@ -357,11 +357,16 @@ export function isPointInsideFootprint(
 // Computes the elevation (top-surface Y) of whatever the ghost is over.
 // Probes the ghost's footprint corners + center against every placed piece;
 // the highest matching piece's top wins. Returns 0 if nothing is underneath.
+//
+// `onlyCategories` — when provided, only pieces in those categories contribute
+// to elevation. Used in free-placement mode so walls are ignored but
+// floors/foundations still lift the ghost to the correct story level.
 export function computeElevation(
   cursor: Vec3,
   ghostPart: PartDef,
   pieces: PlacedPiece[],
-  partsById: Record<string, PartDef>
+  partsById: Record<string, PartDef>,
+  onlyCategories?: ReadonlySet<Category>
 ): number {
   const { w, d } = ghostPart.dimensions
   const probes: Vec3[] = [
@@ -375,6 +380,7 @@ export function computeElevation(
   for (const piece of pieces) {
     const part = partsById[piece.partId]
     if (!part) continue
+    if (onlyCategories && !onlyCategories.has(part.category)) continue
     const top = piece.position[1] + part.dimensions.h / 2
     if (top <= maxTop) continue
     for (const p of probes) {

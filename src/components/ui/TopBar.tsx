@@ -41,8 +41,10 @@ export default function TopBar() {
   const setPendingCameraMove = useBuildStore((s) => s.setPendingCameraMove)
   const meta = useBuildStore((s) => s.meta)
   const serverConfig = useBuildStore((s) => s.serverConfig)
+  const clear = useBuildStore((s) => s.clear)
   const [showSettings, setShowSettings] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const handleShare = () => {
     const encoded = encodeBuild({ pieces, meta, serverConfig, snapEnabled })
@@ -191,6 +193,37 @@ export default function TopBar() {
         >
           {copied ? 'Copied!' : 'Share'}
         </button>
+
+        {/* Clear all — shows inline confirmation to prevent accidental wipes */}
+        {confirmClear ? (
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-gray-400">Clear all?</span>
+            <button
+              type="button"
+              onClick={() => { clear(); setConfirmClear(false) }}
+              className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 border border-red-600 text-white transition-colors"
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmClear(false)}
+              className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmClear(true)}
+            className="text-xs px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-red-700 transition-colors"
+            title="Remove all placed pieces"
+          >
+            Clear
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setShowSettings(true)}

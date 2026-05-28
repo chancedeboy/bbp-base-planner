@@ -13,8 +13,14 @@ import {
   rankCandidatesByCoverage,
   type Vec3,
 } from '../../lib/snap'
+import type { Category } from '../../data/types'
 
 const SNAP_RADIUS = 3 // meters
+
+// In free-placement mode (snap off, no Shift): only floors and foundations set
+// the elevation so walls can be freely overlapped without the ghost jumping on
+// top of them. Shift = true free-form where even floors are ignored.
+const FLOOR_CATEGORIES: ReadonlySet<Category> = new Set(['foundation', 'floor'])
 
 interface Props {
   cursorRef: RefObject<Vector3 | null>
@@ -31,7 +37,23 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
   const pieces = useBuildStore((s) => s.pieces)
 
   const meshRef = useRef<Mesh>(null)
+  const shiftRef = useRef(false)
   const part = selectedPartId ? getPart(selectedPartId) : null
+
+  // Track Shift key state so free-placement can enter full free-form mode.
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => { if (e.shiftKey) shiftRef.current = true }
+    const onUp = (e: KeyboardEvent) => { if (!e.shiftKey) shiftRef.current = false }
+    const onBlur = () => { shiftRef.current = false }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   // World anchors only change when pieces change
   const worldAnchors = useMemo(
@@ -83,9 +105,15 @@ export default function GhostPiece({ cursorRef, ghostPoseRef }: Props) {
         position = [cursorVec[0], cursorY + part.dimensions.h / 2, cursorVec[2]]
       }
     } else {
-      // Free mode: 0.25m grid + elevation over placed pieces
+      // Free placement mode (snap off):
+      //   • Default: 0.25 m grid, elevation from floors/foundations only —
+      //     walls are ignored so pieces can freely overlap them.
+      //   • Shift held: true free-form — no elevation at all, piece floats at
+      //     ground level regardless of what's below.
       const snapped = gridSnapPoint(cursorVec, 0.25)
-      const elevation = computeElevation(snapped, part, pieces, PARTS_BY_ID)
+      const elevation = shiftRef.current
+        ? 0
+        : computeElevation(snapped, part, pieces, PARTS_BY_ID, FLOOR_CATEGORIES)
       position = [snapped[0], elevation + part.dimensions.h / 2, snapped[2]]
     }
 

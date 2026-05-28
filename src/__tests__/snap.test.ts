@@ -403,6 +403,49 @@ describe('computeElevation', () => {
     // Foundation top = 0.3, floor top = 0.5 — floor wins
     expect(computeElevation([0, 0, 0], wall, [foundation, floor], PARTS_BY_ID)).toBeCloseTo(0.5)
   })
+
+  it('ignores walls when onlyCategories = foundation+floor (free-placement mode)', () => {
+    // A wall is present over the cursor — without the filter it would raise the
+    // ghost on top of the wall. With the filter it should be ignored.
+    const wall: PlacedPiece = {
+      uuid: 'w1',
+      partId: 'large-wall',
+      position: [0, 1.65, 0],  // center at 1.65, top at 3.15
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const ghostPart = getPart('large-wall')!
+    const floorOnly = new Set(['foundation', 'floor'] as const)
+    expect(computeElevation([0, 0, 0], ghostPart, [wall], PARTS_BY_ID, floorOnly)).toBe(0)
+  })
+
+  it('still respects foundations when onlyCategories = foundation+floor', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const ghostPart = getPart('large-wall')!
+    const floorOnly = new Set(['foundation', 'floor'] as const)
+    expect(computeElevation([0, 0, 0], ghostPart, [foundation], PARTS_BY_ID, floorOnly)).toBeCloseTo(0.3)
+  })
+
+  it('returns 0 when onlyCategories is an empty set (true free-form)', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const ghostPart = getPart('large-wall')!
+    expect(computeElevation([0, 0, 0], ghostPart, [foundation], PARTS_BY_ID, new Set())).toBe(0)
+  })
 })
 
 describe('computeSnapRotation', () => {
