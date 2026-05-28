@@ -32,10 +32,19 @@ export interface RecipeStep {
   cumulative?: boolean
 }
 
+// Surface kind drives placement offset logic:
+//   top    — normal +Y; ghost sits with its base at anchor (lifted by ghost.h/2)
+//   bottom — normal -Y; ghost hangs with its top at anchor
+//   side   — horizontal normal; ghost center pushed out by ghost depth/2
+//   edge   — horizontal normal at top surface; ghost stands on the edge
+//            (lifted by ghost.h/2 AND centered on the edge line)
+export type AnchorSurface = 'top' | 'bottom' | 'side' | 'edge'
+
 export interface SnapAnchor {
   id: string
-  position: [number, number, number]
-  normal: [number, number, number]
+  position: [number, number, number]  // local coords (piece center is origin)
+  normal: [number, number, number]    // local-space facing direction
+  surface: AnchorSurface
   accepts: Category[]
 }
 

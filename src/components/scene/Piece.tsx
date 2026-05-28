@@ -11,12 +11,10 @@ export default function Piece({ piece }: Props) {
 
   const { w, h, d } = part.dimensions
   const color = CATEGORY_COLORS[part.category]
-  // Lift the piece so its base sits on the ground at piece.position.y
-  const y = piece.position[1] + h / 2
 
   return (
     <mesh
-      position={[piece.position[0], y, piece.position[2]]}
+      position={piece.position}
       rotation={piece.rotation}
       castShadow
       receiveShadow

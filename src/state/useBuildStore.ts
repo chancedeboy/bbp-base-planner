@@ -16,10 +16,21 @@ const initialMeta: BuildState['meta'] = {
   schemaVersion: 1,
 }
 
+interface GhostState {
+  // Yaw rotation of the ghost piece in radians. Sprint 2: yaw-only.
+  ghostRotation: [number, number, number]
+  // Index into the sorted snap candidates; mouse wheel cycles.
+  snapCandidateIndex: number
+}
+
 interface BuildStoreActions {
   selectedPartId: string | null
   selectPart: (id: string | null) => void
-  placePiece: (partId: string, position: [number, number, number]) => string
+  placePiece: (
+    partId: string,
+    position: [number, number, number],
+    rotation?: [number, number, number]
+  ) => string
   removePiece: (uuid: string) => void
   selectPiece: (uuid: string | null) => void
   upgradeTier: (uuid: string, tier: Tier) => void
@@ -27,11 +38,18 @@ interface BuildStoreActions {
   setMode: (mode: 'exterior' | 'interior') => void
   setServerConfig: (cfg: Partial<ServerConfig>) => void
   clear: () => void
+
+  // Ghost / placement controls
+  setGhostRotation: (rot: [number, number, number]) => void
+  rotateGhost: (deltaRad: number) => void
+  resetGhostRotation: () => void
+  cycleSnapCandidate: (delta: number) => void
+  resetSnapCandidate: () => void
 }
 
-export type BuildStore = BuildState & BuildStoreActions
+export type BuildStore = BuildState & GhostState & BuildStoreActions
 
-const initialState: BuildState & { selectedPartId: string | null } = {
+const initialState: BuildState & GhostState & { selectedPartId: string | null } = {
   pieces: [],
   meta: initialMeta,
   snapEnabled: true,
@@ -40,20 +58,27 @@ const initialState: BuildState & { selectedPartId: string | null } = {
   selectedPartId: null,
   map: null,
   serverConfig: DEFAULT_SERVER_CONFIG,
+  ghostRotation: [0, 0, 0],
+  snapCandidateIndex: 0,
 }
 
 export const useBuildStore = create<BuildStore>()(
   devtools(
     (set) => ({
       ...initialState,
-      selectPart: (id) => set({ selectedPartId: id }, false, 'selectPart'),
-      placePiece: (partId, position) => {
+      selectPart: (id) =>
+        set(
+          { selectedPartId: id, ghostRotation: [0, 0, 0], snapCandidateIndex: 0 },
+          false,
+          'selectPart'
+        ),
+      placePiece: (partId, position, rotation = [0, 0, 0]) => {
         const uuid = crypto.randomUUID()
         const piece: PlacedPiece = {
           uuid,
           partId,
           position,
-          rotation: [0, 0, 0],
+          rotation,
           tier: 'frame',
           layer: 'exterior',
         }
@@ -61,6 +86,7 @@ export const useBuildStore = create<BuildStore>()(
           (s) => ({
             pieces: [...s.pieces, piece],
             meta: { ...s.meta, updatedAt: new Date().toISOString() },
+            snapCandidateIndex: 0,
           }),
           false,
           'placePiece'
@@ -91,6 +117,28 @@ export const useBuildStore = create<BuildStore>()(
           'setServerConfig'
         ),
       clear: () => set({ ...initialState }, false, 'clear'),
+
+      setGhostRotation: (rot) => set({ ghostRotation: rot }, false, 'setGhostRotation'),
+      rotateGhost: (deltaRad) =>
+        set(
+          (s) => ({
+            ghostRotation: [
+              s.ghostRotation[0],
+              s.ghostRotation[1] + deltaRad,
+              s.ghostRotation[2],
+            ],
+          }),
+          false,
+          'rotateGhost'
+        ),
+      resetGhostRotation: () => set({ ghostRotation: [0, 0, 0] }, false, 'resetGhostRotation'),
+      cycleSnapCandidate: (delta) =>
+        set(
+          (s) => ({ snapCandidateIndex: s.snapCandidateIndex + delta }),
+          false,
+          'cycleSnapCandidate'
+        ),
+      resetSnapCandidate: () => set({ snapCandidateIndex: 0 }, false, 'resetSnapCandidate'),
     }),
     { name: 'bbp-build-store' }
   )

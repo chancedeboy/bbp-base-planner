@@ -1,9 +1,49 @@
-import type { PartDef } from './types'
+import type { Category, PartDef, SnapAnchor } from './types'
 
 // All recipe data sourced from PLAN.md §6, originally extracted from the
 // Fandom BBP wiki via the Cartel Island mirror. Verify before locking.
 const SOURCE = 'cartel-mirror' as const
 const VERSION = '2.0'
+
+// Compatibility groups — reused across anchor definitions.
+const ACCEPTS_WALL_LIKE: Category[] = ['wall', 'door', 'window', 'gate']
+const ACCEPTS_ON_FLOOR: Category[] = ['wall', 'door', 'window', 'gate', 'pillar', 'stair']
+const ACCEPTS_ON_WALL_TOP: Category[] = ['wall', 'floor', 'roof']
+const ACCEPTS_FOUNDATION_TOP: Category[] = ['wall', 'floor', 'foundation', 'pillar']
+
+// Anchor sets for common piece shapes. Inputs are dimensions; outputs are
+// SnapAnchor arrays in local space (piece center is origin).
+function wallAnchors(w: number, h: number): SnapAnchor[] {
+  return [
+    { id: 'left', position: [-w / 2, 0, 0], normal: [-1, 0, 0], surface: 'side', accepts: ACCEPTS_WALL_LIKE },
+    { id: 'right', position: [w / 2, 0, 0], normal: [1, 0, 0], surface: 'side', accepts: ACCEPTS_WALL_LIKE },
+    { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_ON_WALL_TOP },
+    { id: 'bottom', position: [0, -h / 2, 0], normal: [0, -1, 0], surface: 'bottom', accepts: ['wall'] },
+  ]
+}
+
+// Floor-like piece (flat slab). Edges are placement points for walls;
+// top accepts pillars and walls; bottom is for downward stairs.
+function floorAnchors(w: number, h: number, d: number): SnapAnchor[] {
+  return [
+    { id: 'edge-px', position: [w / 2, h / 2, 0], normal: [1, 0, 0], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
+    { id: 'edge-nx', position: [-w / 2, h / 2, 0], normal: [-1, 0, 0], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
+    { id: 'edge-pz', position: [0, h / 2, d / 2], normal: [0, 0, 1], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
+    { id: 'edge-nz', position: [0, h / 2, -d / 2], normal: [0, 0, -1], surface: 'edge', accepts: ACCEPTS_ON_FLOOR },
+    { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_ON_FLOOR },
+    { id: 'bottom', position: [0, -h / 2, 0], normal: [0, -1, 0], surface: 'bottom', accepts: ['stair'] },
+  ]
+}
+
+function foundationAnchors(w: number, h: number, d: number): SnapAnchor[] {
+  return [
+    { id: 'top', position: [0, h / 2, 0], normal: [0, 1, 0], surface: 'top', accepts: ACCEPTS_FOUNDATION_TOP },
+    { id: 'edge-px', position: [w / 2, h / 2, 0], normal: [1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
+    { id: 'edge-nx', position: [-w / 2, h / 2, 0], normal: [-1, 0, 0], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
+    { id: 'edge-pz', position: [0, h / 2, d / 2], normal: [0, 0, 1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
+    { id: 'edge-nz', position: [0, h / 2, -d / 2], normal: [0, 0, -1], surface: 'edge', accepts: ACCEPTS_FOUNDATION_TOP },
+  ]
+}
 
 // Stylized dimensions in meters. Approximations sufficient for v1 placement;
 // snap geometry tightens in Sprint 2.
@@ -128,7 +168,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Wall',
     category: 'wall',
     dimensions: { w: 4, h: 3, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(4, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 5 } },
       t1: { resources: { nails: 10, logs: 2 }, cumulative: true, notes: 'or 6 planks' },
@@ -144,7 +184,7 @@ export const PARTS: PartDef[] = [
     name: 'Small Wall',
     category: 'wall',
     dimensions: { w: 2, h: 3, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(2, 3),
     recipes: {
       frame: { resources: { nails: 10, planks: 3 } },
       t1: { resources: { nails: 10, logs: 1 }, cumulative: true, notes: 'or 3 planks' },
@@ -160,7 +200,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Half-Wall',
     category: 'wall',
     dimensions: { w: 4, h: 1.5, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(4, 1.5),
     recipes: {
       frame: { resources: { nails: 10, planks: 3 } },
       t1: { resources: { nails: 10, logs: 1 }, cumulative: true, notes: 'or 3 planks' },
@@ -176,7 +216,7 @@ export const PARTS: PartDef[] = [
     name: 'Small Half-Wall',
     category: 'wall',
     dimensions: { w: 2, h: 1.5, d: 0.2 },
-    snapAnchors: [],
+    snapAnchors: wallAnchors(2, 1.5),
     recipes: {
       frame: { resources: { nails: 5, planks: 2 } },
       t1: { resources: { nails: 10, logs: 1 }, cumulative: true, notes: 'or 2 planks' },
@@ -192,7 +232,7 @@ export const PARTS: PartDef[] = [
     name: 'Foundation / Triangle',
     category: 'foundation',
     dimensions: { w: 4, h: 0.3, d: 4 },
-    snapAnchors: [],
+    snapAnchors: foundationAnchors(4, 0.3, 4),
     recipes: {
       frame: { resources: { nails: 10, logs: 2 } },
       t1: { resources: { nails: 10, planks: 8 }, cumulative: true },
@@ -302,7 +342,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Floor/Roof',
     category: 'floor',
     dimensions: { w: 4, h: 0.2, d: 4 },
-    snapAnchors: [],
+    snapAnchors: floorAnchors(4, 0.2, 4),
     recipes: {
       frame: { resources: { nails: 10, planks: 5 } },
       t1: { resources: { nails: 10, planks: 8 }, cumulative: true },
@@ -318,7 +358,7 @@ export const PARTS: PartDef[] = [
     name: 'Small Floor/Roof',
     category: 'floor',
     dimensions: { w: 2, h: 0.2, d: 4 },
-    snapAnchors: [],
+    snapAnchors: floorAnchors(2, 0.2, 4),
     recipes: {
       frame: { resources: { nails: 5, planks: 3 } },
       t1: { resources: { nails: 5, planks: 3 }, cumulative: true },
@@ -350,7 +390,7 @@ export const PARTS: PartDef[] = [
     name: 'Large Slope Roof',
     category: 'roof',
     dimensions: { w: 4, h: 1.5, d: 4 },
-    snapAnchors: [],
+    snapAnchors: floorAnchors(4, 1.5, 4),
     recipes: {
       frame: { resources: { nails: 10, planks: 5 } },
       t1: { resources: { nails: 10, planks: 8 }, cumulative: true },
