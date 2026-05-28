@@ -7,6 +7,7 @@ import type {
   Tier,
 } from '../data/types'
 import { DEFAULT_SERVER_CONFIG } from '../data/types'
+import { getPart } from '../data/parts'
 
 const initialMeta: BuildState['meta'] = {
   name: 'Untitled Base',
@@ -75,12 +76,16 @@ export const useBuildStore = create<BuildStore>()(
         ),
       placePiece: (partId, position, rotation = [0, 0, 0]) => {
         const uuid = crypto.randomUUID()
+        // Default to T1 when the part has higher tiers available; otherwise
+        // stay at frame (utility/pillar/stair pieces with no upgrades).
+        const part = getPart(partId)
+        const defaultTier: Tier = part && part.maxTier !== 'frame' ? 't1' : 'frame'
         const piece: PlacedPiece = {
           uuid,
           partId,
           position,
           rotation,
-          tier: 'frame',
+          tier: defaultTier,
           layer: 'exterior',
         }
         set(
