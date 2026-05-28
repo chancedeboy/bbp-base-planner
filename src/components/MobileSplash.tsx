@@ -4,7 +4,8 @@ const STORAGE_KEY = 'bbp-mobile-dismissed'
 
 export default function MobileSplash() {
   const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem(STORAGE_KEY) === 'true'
+    // Hide immediately on desktop (≥768 px); on mobile, hide only after explicit dismiss.
+    () => window.innerWidth >= 768 || localStorage.getItem(STORAGE_KEY) === 'true'
   )
 
   if (dismissed) return null

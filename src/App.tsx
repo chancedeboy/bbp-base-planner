@@ -6,6 +6,7 @@ import PartsPalette from './components/ui/PartsPalette'
 import Inspector from './components/ui/Inspector'
 import ResourcePanel from './components/ui/ResourcePanel'
 import EditorCanvas from './components/scene/EditorCanvas'
+import WelcomeModal from './components/ui/WelcomeModal'
 import { useBuildStore } from './state/useBuildStore'
 import { decodeBuild } from './lib/serialise'
 
@@ -29,6 +30,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <MobileSplash />
+      <WelcomeModal onDismiss={() => {}} />
       <div className="w-full h-full flex flex-col bg-gray-900">
         <TopBar />
         <div className="flex-1 flex min-h-0">
