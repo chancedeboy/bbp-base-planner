@@ -55,6 +55,35 @@ export function distXZ(a: Vec3, b: Vec3): number {
   return Math.sqrt(dx * dx + dz * dz)
 }
 
+export function dist3D(a: Vec3, b: Vec3): number {
+  const dx = a[0] - b[0]
+  const dy = a[1] - b[1]
+  const dz = a[2] - b[2]
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}
+
+// Returns the highest top-surface Y of any placed piece whose XZ footprint
+// contains `point`. Returns 0 if `point` is over empty ground. Used to give
+// the cursor a Y value that reflects what the user is hovering over so the
+// snap system can distinguish e.g. a foundation edge from a second-story
+// floor edge at the same XZ.
+export function topElevationAt(
+  point: Vec3,
+  pieces: PlacedPiece[],
+  partsById: Record<string, PartDef>
+): number {
+  let maxTop = 0
+  for (const piece of pieces) {
+    const part = partsById[piece.partId]
+    if (!part) continue
+    if (isPointInsideFootprint(point, piece, part)) {
+      const top = piece.position[1] + part.dimensions.h / 2
+      if (top > maxTop) maxTop = top
+    }
+  }
+  return maxTop
+}
+
 // Snap a single axis to the nearest multiple of `step`.
 export function snapToGrid(value: number, step: number): number {
   return Math.round(value / step) * step
@@ -124,7 +153,9 @@ export function findSnapCandidates(
     })()
 
     for (const { pos, offset } of expansions) {
-      const d = distXZ(cursor, pos)
+      // 3D distance so the cursor's Y (set from topElevationAt in GhostPiece)
+      // disambiguates anchors at different stories that share an XZ position.
+      const d = dist3D(cursor, pos)
       if (d > radius) continue
       out.push({
         worldAnchor: wa,

@@ -11,6 +11,8 @@ import {
   computeElevation,
   isPointInsideFootprint,
   rankCandidatesByCoverage,
+  topElevationAt,
+  dist3D,
   type Vec3,
 } from '../lib/snap'
 import { PARTS_BY_ID, getPart } from '../data/parts'
@@ -480,6 +482,121 @@ describe('rankCandidatesByCoverage', () => {
     const cursor: Vec3 = [2, wallCenterY + wallH / 2, 0]
     const raw = findSnapCandidates('floor', cursor, anchors, 5, floor)
     expect(rankCandidatesByCoverage(raw, floor, [], PARTS_BY_ID)).toEqual(raw)
+  })
+})
+
+describe('dist3D', () => {
+  it('returns Euclidean distance in 3D', () => {
+    expect(dist3D([0, 0, 0], [3, 4, 0])).toBeCloseTo(5)
+    expect(dist3D([0, 0, 0], [1, 1, 1])).toBeCloseTo(Math.sqrt(3))
+  })
+})
+
+describe('topElevationAt', () => {
+  it('returns 0 when the point is over empty ground', () => {
+    expect(topElevationAt([100, 0, 100], [], PARTS_BY_ID)).toBe(0)
+  })
+
+  it('returns the top of a piece whose footprint contains the point', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0], // h=0.3 → top at 0.3
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    expect(topElevationAt([0, 0, 0], [foundation], PARTS_BY_ID)).toBeCloseTo(0.3)
+  })
+
+  it('picks the highest top among overlapping pieces (e.g., floor stacked on foundation)', () => {
+    const foundation: PlacedPiece = {
+      uuid: 'f1',
+      partId: 'foundation-triangle',
+      position: [0, 0.15, 0],
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    const upperFloor: PlacedPiece = {
+      uuid: 'fl1',
+      partId: 'large-floor',
+      position: [0, 3.4, 0], // top at 3.5
+      rotation: [0, 0, 0],
+      tier: 'frame',
+      layer: 'exterior',
+    }
+    expect(topElevationAt([0, 0, 0], [foundation, upperFloor], PARTS_BY_ID)).toBeCloseTo(3.5)
+  })
+})
+
+describe('multi-story snap disambiguation (regression)', () => {
+  // Build a first-story box + second-story floor. Place the cursor over the
+  // second-story floor edge — with the new Y-aware cursor + 3D distance, the
+  // second-story floor's edge anchors should rank ahead of the first-story
+  // wall sides or foundation edges that share the same XZ.
+  const mkWall = (x: number, z: number, yaw: number, uuid: string): PlacedPiece => ({
+    uuid,
+    partId: 'large-wall',
+    position: [x, 1.8, z], // foundation top 0.3 + wall h/2 = 1.8
+    rotation: [0, yaw, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  })
+  const foundation: PlacedPiece = {
+    uuid: 'fdn',
+    partId: 'foundation-triangle',
+    position: [0, 0.15, 0],
+    rotation: [0, 0, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  }
+  const walls: PlacedPiece[] = [
+    mkWall(2, 0, Math.PI / 2, 'w-east'),
+    mkWall(-2, 0, Math.PI / 2, 'w-west'),
+    mkWall(0, 2, 0, 'w-north'),
+    mkWall(0, -2, 0, 'w-south'),
+  ]
+  // Second-story floor sits on top of the wall tops (y=3.3). Floor h=0.2 → center at 3.4.
+  const secondFloor: PlacedPiece = {
+    uuid: 'fl-2',
+    partId: 'large-floor',
+    position: [0, 3.4, 0],
+    rotation: [0, 0, 0],
+    tier: 'frame',
+    layer: 'exterior',
+  }
+  const scene = [foundation, ...walls, secondFloor]
+
+  it('cursor over the second-story floor edge → second-story floor edge ranks ahead of foundation edge', () => {
+    // Y-aware cursor: over the second-story floor (top at 3.5), cursor.y = 3.5
+    const cursorXZ: Vec3 = [2, 0, 0]
+    const cursorY = topElevationAt(cursorXZ, scene, PARTS_BY_ID)
+    expect(cursorY).toBeCloseTo(3.5)
+
+    const cursor: Vec3 = [2, cursorY, 0]
+    const anchors = computeAllWorldAnchors(scene, PARTS_BY_ID)
+    const wallPart = getPart('large-wall')!
+    const candidates = findSnapCandidates('wall', cursor, anchors, 3, wallPart)
+    expect(candidates.length).toBeGreaterThan(0)
+
+    // The nearest candidate's anchor must belong to the second-story floor,
+    // not the foundation. (Same XZ, but second floor's Y is closer to cursor.)
+    expect(candidates[0].worldAnchor.pieceUuid).toBe('fl-2')
+  })
+
+  it('cursor over empty ground (old behavior) → foundation edge ranks first', () => {
+    // Cursor at the foundation's east edge XZ, no piece overhead at that point.
+    // topElevationAt at (2, 0, 0): the foundation extends to x=2 (boundary), so
+    // it counts. cursorY = 0.3.
+    const cursorXZ: Vec3 = [2, 0, 0]
+    const cursorY = topElevationAt(cursorXZ, [foundation], PARTS_BY_ID)
+    const cursor: Vec3 = [2, cursorY, 0]
+    const anchors = computeAllWorldAnchors([foundation], PARTS_BY_ID)
+    const wallPart = getPart('large-wall')!
+    const candidates = findSnapCandidates('wall', cursor, anchors, 3, wallPart)
+    expect(candidates[0].worldAnchor.pieceUuid).toBe('fdn')
+    expect(candidates[0].worldAnchor.anchor.id).toBe('edge-px')
   })
 })
 
